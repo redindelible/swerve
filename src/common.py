@@ -51,11 +51,25 @@ class SourceLocation:
         self.length = length
         self.source = source
 
+    def combine(self, other: SourceLocation) -> SourceLocation:
+        if self.source == other.source:
+            this_end = self.index + self.length
+            other_end = other.index + other.length
+            start = min(self.index, other.index)
+            length = max(this_end, other_end) - start
+            return SourceLocation(start, length, self.source)
+        else:
+            raise ValueError()
+
     def in_context(self) -> str:
         line_no, line_start, line = self.source.get_index_line(self.index)
         line_pos = self.index - line_start
         ctxt = f"{line_no:> 4}"
         line_no_size = len(ctxt)
-        ctxt += " | {line}\n"
-        ctxt += f"{' '*line_no_size}   {' '*line_start}{'^'*self.length}\n"
+        ctxt += f" | {line}\n"
+        caret_len = min(self.length, len(line)-line_start)
+        ctxt += f"{' '*line_no_size}   {' '*line_start}{'^'*caret_len}"
+        if caret_len < self.length:
+            ctxt += ">"
+        ctxt += "\n"
         return ctxt

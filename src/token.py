@@ -12,17 +12,69 @@ __all__ = ['TokenType', 'Token', 'TokenStream']
 class TokenType(Enum):
     PLUS = "`+`"
     MINUS = "`-`"
+    STAR = "`*`"
+    STAR_STAR = "`**`"
+    SLASH = "`/`"
+    SLASH_SLASH = "`//`"
     PLUS_EQUAL = "`+=`"
     MINUS_EQUAL = "`-=`"
+    STAR_EQUAL = "`*=`"
+    STAR_STAR_EQUAL = "`**=`"
+    SLASH_EQUAL = "`/=`"
+    SLASH_SLASH_EQUAL = "`//=`"
+    LEFT_PAREN = "`(`"
+    RIGHT_PAREN = "`)`"
+    LEFT_BRACE = "`{`"
+    RIGHT_BRACE = "`}`"
+    LEFT_BRACKET = "`[`"
+    RIGHT_BRACKET = "`]`"
+    DOT = "`.`"
+    ARROW = "`->`"
+    COLON = "`:`"
+    EQUAL = "`=`"
+    EQUAL_EQUAL = "`==`"
+    SEMICOLON = "`;`"
+    COMMA = "`,`"
     IDENT = "an identifier"
     DEF = "`def`"
     RETURN = "`return`"
+    LET = "`let`"
+    VAR = "`var`"
+    OR = "`or`"
+    AND = "`and`"
+    NOT = "`not`"
     BINARY = "a binary literal"
     HEX = "a hexadecimal literal"
     INTEGER = "an integer literal"
     FLOAT = "a float literal"
     STRING = "a string literal"
+    EOF = "<eof>"
     ERROR = "<error>"
+
+
+SIMPLE_TOKENS = {
+    "(": TokenType.LEFT_PAREN,
+    ")": TokenType.RIGHT_PAREN,
+    "{": TokenType.LEFT_BRACE,
+    "}": TokenType.RIGHT_BRACE,
+    "[": TokenType.LEFT_BRACKET,
+    "]": TokenType.RIGHT_BRACKET,
+    ":": TokenType.COLON,
+    ";": TokenType.SEMICOLON,
+    ",": TokenType.COMMA,
+    ".": TokenType.DOT,
+}
+
+
+KEYWORDS = {
+    "def": TokenType.DEF,
+    "return": TokenType.RETURN,
+    "let": TokenType.LET,
+    "var": TokenType.VAR,
+    "or": TokenType.OR,
+    "and": TokenType.AND,
+    "not": TokenType.NOT
+}
 
 
 class Token:
@@ -95,9 +147,55 @@ class TokenStream:
                 if self._next == "=":
                     self._advance(steps=2)
                     yield self._get_token(TokenType.MINUS_EQUAL)
+                elif self._next == ">":
+                    self._advance(steps=2)
+                    yield self._get_token(TokenType.ARROW)
                 else:
                     self._advance()
                     yield self._get_token(TokenType.MINUS)
+            elif self._curr == "*":
+                self._new_token()
+                self._advance()
+                if self._curr == "=":
+                    self._advance()
+                    yield self._get_token(TokenType.STAR_EQUAL)
+                elif self._next == "*":
+                    self._advance()
+                    if self._curr == "=":
+                        self._advance()
+                        yield self._get_token(TokenType.STAR_STAR_EQUAL)
+                    else:
+                        yield self._get_token(TokenType.STAR_STAR)
+                else:
+                    yield self._get_token(TokenType.STAR)
+            elif self._curr == "/":
+                self._new_token()
+                self._advance()
+                if self._curr == "=":
+                    self._advance()
+                    yield self._get_token(TokenType.SLASH_EQUAL)
+                elif self._next == "/":
+                    self._advance()
+                    if self._curr == "=":
+                        self._advance()
+                        yield self._get_token(TokenType.SLASH_SLASH_EQUAL)
+                    else:
+                        yield self._get_token(TokenType.SLASH_SLASH)
+                else:
+                    yield self._get_token(TokenType.SLASH)
+            elif self._curr == "=":
+                self._new_token()
+                if self._next == "=":
+                    self._advance(steps=2)
+                    yield self._get_token(TokenType.EQUAL_EQUAL)
+                else:
+                    self._advance()
+                    yield self._get_token(TokenType.EQUAL)
+            elif self._curr in SIMPLE_TOKENS.keys():
+                type = SIMPLE_TOKENS[self._curr]
+                self._new_token()
+                self._advance()
+                yield self._get_token(type)
             elif self._curr == "\"":
                 self._new_token()
                 self._advance()
@@ -115,7 +213,11 @@ class TokenStream:
                 self._new_token()
                 while self._curr.isalpha() or self._curr.isnumeric() or self._curr == "_":
                     self._advance()
-                yield self._get_token(TokenType.IDENT)
+                tok = self._get_token(TokenType.IDENT)
+                if tok.text in KEYWORDS:
+                    yield Token(KEYWORDS[tok.text], tok.text, tok.location)
+                else:
+                    yield tok
             elif self._curr.isnumeric():
                 self._new_token()
                 if self._curr == "0" and self._next in "bxBX":
@@ -148,4 +250,6 @@ class TokenStream:
                 self._new_token()
                 self._advance()
                 raise ParseError(f"Unexpected character `{self._curr}`.", self._get_token(TokenType.ERROR).location)
-
+        self._new_token()
+        while True:
+            yield self._get_token(TokenType.EOF)
