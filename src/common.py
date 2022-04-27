@@ -3,7 +3,7 @@ from __future__ import annotations
 from sys import stderr
 
 
-__all__ = ['CompilerMessage', 'ParseError', 'Source', 'SourceLocation']
+__all__ = ['CompilerMessage', 'ParseError', 'Source', 'Location', 'BuiltinLocation', 'SourceLocation']
 
 
 class CompilerMessage(Exception):
@@ -12,7 +12,7 @@ class CompilerMessage(Exception):
 
 
 class ParseError(CompilerMessage):
-    def __init__(self, message: str, location: SourceLocation):
+    def __init__(self, message: str, location: Location):
         self.message = message
         self.location = location
 
@@ -25,7 +25,8 @@ class ParseError(CompilerMessage):
 
 
 class Source:
-    def __init__(self, text: str):
+    def __init__(self, name: str, text: str):
+        self.name = name
         self.text = text
         self.size = len(self.text)
         self.lines: dict[int, str] = {0: ""}
@@ -45,13 +46,25 @@ class Source:
             raise ValueError()
 
 
-class SourceLocation:
+class Location:
+    def in_context(self) -> str:
+        raise NotImplementedError()
+
+
+class BuiltinLocation(Location):
+    def in_context(self) -> str:
+        return "(builtin definition)"
+
+
+class SourceLocation(Location):
     def __init__(self, index: int, length: int, source: Source):
         self.index = index
         self.length = length
         self.source = source
 
-    def combine(self, other: SourceLocation) -> SourceLocation:
+    def combine(self, other: Location) -> SourceLocation:
+        if not isinstance(other, SourceLocation):
+            raise ValueError()
         if self.source == other.source:
             this_end = self.index + self.length
             other_end = other.index + other.length

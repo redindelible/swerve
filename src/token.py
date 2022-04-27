@@ -31,11 +31,11 @@ class TokenType(Enum):
     DOT = "`.`"
     ARROW = "`->`"
     COLON = "`:`"
+    COLON_COLON = "`::`"
     EQUAL = "`=`"
     EQUAL_EQUAL = "`==`"
     SEMICOLON = "`;`"
     COMMA = "`,`"
-    IDENT = "an identifier"
     DEF = "`def`"
     RETURN = "`return`"
     LET = "`let`"
@@ -43,6 +43,8 @@ class TokenType(Enum):
     OR = "`or`"
     AND = "`and`"
     NOT = "`not`"
+    STRUCT = "`struct`"
+    IDENT = "an identifier"
     BINARY = "a binary literal"
     HEX = "a hexadecimal literal"
     INTEGER = "an integer literal"
@@ -59,7 +61,6 @@ SIMPLE_TOKENS = {
     "}": TokenType.RIGHT_BRACE,
     "[": TokenType.LEFT_BRACKET,
     "]": TokenType.RIGHT_BRACKET,
-    ":": TokenType.COLON,
     ";": TokenType.SEMICOLON,
     ",": TokenType.COMMA,
     ".": TokenType.DOT,
@@ -73,7 +74,8 @@ KEYWORDS = {
     "var": TokenType.VAR,
     "or": TokenType.OR,
     "and": TokenType.AND,
-    "not": TokenType.NOT
+    "not": TokenType.NOT,
+    "struct": TokenType.STRUCT
 }
 
 
@@ -118,7 +120,7 @@ class TokenStream:
             self._token_text += self._curr
             self._index += 1
 
-    def _is_done(self):
+    def is_done(self):
         return self._index >= self.source.size
 
     def _new_token(self):
@@ -129,7 +131,7 @@ class TokenStream:
         return Token(type, self._token_text, SourceLocation(self._token_start, len(self._token_text), self.source))
 
     def iter_tokens(self) -> Iterator[Token]:
-        while not self._is_done():
+        while not self.is_done():
             if self._curr == "\n":
                 self._advance()
             elif self._curr in " \t\r":
@@ -191,6 +193,14 @@ class TokenStream:
                 else:
                     self._advance()
                     yield self._get_token(TokenType.EQUAL)
+            elif self._curr == ":":
+                self._new_token()
+                if self._next == ":":
+                    self._advance(steps=2)
+                    yield self._get_token(TokenType.COLON_COLON)
+                else:
+                    self._advance()
+                    yield self._get_token(TokenType.COLON)
             elif self._curr in SIMPLE_TOKENS.keys():
                 type = SIMPLE_TOKENS[self._curr]
                 self._new_token()
