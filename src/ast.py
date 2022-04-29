@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from contextlib import contextmanager
 
 from src.common import Location, SourceLocation
 from src.token import Token, TokenType
@@ -13,14 +14,36 @@ __all__ = ["ASTFunction", "ASTParameter", "ASTStmt", "ASTLetStmt", "ASTVarStmt",
     "ASTStructField", "ASTImport"]
 
 
+class Printer:
+    def __init__(self):
+        self.level = 0
+
+    @contextmanager
+    def indent(self):
+        self.level += 1
+        yield
+        self.level -= 1
+
+    def print(self, s: str):
+        print('  '*self.level + s)
+
+
 class ASTNode:
     def __init__(self, loc: Location):
         self.location = loc
+
+    def pretty_print(self, printer: Printer):
+        raise NotImplementedError()
 
 
 class ASTProgram:
     def __init__(self, files: list[ASTFile]):
         self.files = files
+
+    def pretty_print(self):
+        print("Program:")
+        for file in self.files:
+            file.pretty_print(Printer())
 
 
 class ASTFile:
@@ -28,9 +51,19 @@ class ASTFile:
         self.path = path
         self.top_levels = top_levels
 
+    def pretty_print(self, printer: Printer):
+        printer.print(f"File:")
+        with printer.indent():
+            printer.print(f"Path={self.path}")
+            printer.print(f"Top Levels:")
+            with printer.indent():
+                for top_level in self.top_levels:
+                    top_level.pretty_print(printer)
+
 
 class ASTTopLevel(ASTNode):
-    pass
+    def pretty_print(self, printer: Printer):
+        raise NotImplementedError()
 
 
 class ASTImport(ASTTopLevel):
@@ -39,6 +72,13 @@ class ASTImport(ASTTopLevel):
         self.path = path
         self.names = names
         self.as_name = as_name
+
+    def pretty_print(self, printer: Printer):
+        printer.print("Import:")
+        with printer.indent():
+            printer.print(f"Path={self.path}")
+            printer.print(f"Names={self.names}")
+            printer.print(f"As={self.as_name}")
 
 
 class ASTFunction(ASTTopLevel):
@@ -49,12 +89,36 @@ class ASTFunction(ASTTopLevel):
         self.return_type = return_type
         self.body = body
 
+    def pretty_print(self, printer: Printer):
+        printer.print("Function:")
+        with printer.indent():
+            printer.print(f"Name={self.name}")
+            printer.print(f"Parameters:")
+            with printer.indent():
+                for param in self.parameters:
+                    param.pretty_print(printer)
+            printer.print(f"Return Type:")
+            with printer.indent():
+                self.return_type.pretty_print(printer)
+            printer.print(f"Body:")
+            with printer.indent():
+                for stmt in self.body.body:
+                    stmt.pretty_print(printer)
+
 
 class ASTParameter(ASTNode):
     def __init__(self, name: str, type: ASTType, location: Location):
         super().__init__(location)
         self.name = name
         self.type = type
+
+    def pretty_print(self, printer: Printer):
+        printer.print("Parameter:")
+        with printer.indent():
+            printer.print(f"Name={self.name}")
+            printer.print(f"Type:")
+            with printer.indent():
+                self.type.pretty_print(printer)
 
 
 class ASTStruct(ASTTopLevel):
@@ -67,12 +131,41 @@ class ASTStruct(ASTTopLevel):
         self.fields = fields
         self.methods = methods
 
+    def pretty_print(self, printer: Printer):
+        printer.print("Struct:")
+        with printer.indent():
+            printer.print(f"Name={self.name}")
+            printer.print(f"Type Variables:")
+            with printer.indent():
+                for type_var in self.type_variables:
+                    type_var.pretty_print(printer)
+            printer.print(f"Super Traits:")
+            with printer.indent():
+                for trait in self.supertraits:
+                    trait.pretty_print(printer)
+            printer.print(f"Fields:")
+            with printer.indent():
+                for field in self.fields:
+                    field.pretty_print(printer)
+            printer.print(f"Methods:")
+            with printer.indent():
+                for method in self.methods:
+                    method.pretty_print(printer)
+
 
 class ASTStructField(ASTNode):
     def __init__(self, name: Token, type: ASTType, location: Location):
         super().__init__(location)
         self.name: str = name.text
         self.type = type
+
+    def pretty_print(self, printer: Printer):
+        printer.print("Struct Field:")
+        with printer.indent():
+            printer.print(f"Name={self.name}")
+            printer.print(f"Type:")
+            with printer.indent():
+                self.type.pretty_print(printer)
 
 
 class ASTMethod(ASTNode):
@@ -85,6 +178,24 @@ class ASTMethod(ASTNode):
         self.return_type = return_type
         self.body = body
 
+    def pretty_print(self, printer: Printer):
+        printer.print("Method:")
+        with printer.indent():
+            printer.print(f"Name={self.name}")
+            printer.print(f"Is Static={self.is_static}")
+            printer.print(f"Parameters:")
+            with printer.indent():
+                for param in self.parameters:
+                    param.pretty_print(printer)
+            printer.print(f"Self={self.self_name}")
+            printer.print(f"Return Type:")
+            with printer.indent():
+                self.return_type.pretty_print(printer)
+            printer.print(f"Body:")
+            with printer.indent():
+                for stmt in self.body.body:
+                    stmt.pretty_print(printer)
+
 
 class ASTTypeVariable(ASTNode):
     def __init__(self, name: str, bound: ASTType | None, location: Location):
@@ -92,9 +203,18 @@ class ASTTypeVariable(ASTNode):
         self.name = name
         self.bound = bound
 
+    def pretty_print(self, printer: Printer):
+        printer.print("Type Variable:")
+        with printer.indent():
+            printer.print(f"Name={self.name}")
+            printer.print(f"Bound:")
+            with printer.indent():
+                self.bound.pretty_print(printer)
+
 
 class ASTStmt(ASTNode):
-    pass
+    def pretty_print(self, printer: Printer):
+        raise NotImplementedError()
 
 
 class ASTLetStmt(ASTStmt):
@@ -104,6 +224,17 @@ class ASTLetStmt(ASTStmt):
         self.type = type
         self.init = init
 
+    def pretty_print(self, printer: Printer):
+        printer.print("Let Statement:")
+        with printer.indent():
+            printer.print(f"Name={self.name}")
+            printer.print(f"Type:")
+            with printer.indent():
+                self.type.pretty_print(printer)
+            printer.print("Init:")
+            with printer.indent():
+                self.init.pretty_print(printer)
+
 
 class ASTVarStmt(ASTStmt):
     def __init__(self, var_token: Token, name: Token, type: ASTType | None, init: ASTExpr, location: Location):
@@ -112,15 +243,32 @@ class ASTVarStmt(ASTStmt):
         self.type: ASTType = type
         self.init: ASTExpr = init
 
+    def pretty_print(self, printer: Printer):
+        printer.print("Var Statement:")
+        with printer.indent():
+            printer.print(f"Name={self.name}")
+            printer.print(f"Type:")
+            with printer.indent():
+                self.type.pretty_print(printer)
+            printer.print("Init:")
+            with printer.indent():
+                self.init.pretty_print(printer)
+
 
 class ASTExprStmt(ASTStmt):
     def __init__(self, expr: ASTExpr):
         super().__init__(expr.location)
         self.expr: ASTExpr = expr
 
+    def pretty_print(self, printer: Printer):
+        printer.print("Expression Statement:")
+        with printer.indent():
+            self.expr.pretty_print(printer)
+
 
 class ASTExpr(ASTNode):
-    pass
+    def pretty_print(self, printer: Printer):
+        raise NotImplementedError()
 
 
 class ASTBlockExpr(ASTExpr):
@@ -128,11 +276,22 @@ class ASTBlockExpr(ASTExpr):
         super().__init__(location)
         self.body = body
 
+    def pretty_print(self, printer: Printer):
+        printer.print("Method:")
+        with printer.indent():
+            for stmt in self.body:
+                stmt.pretty_print(printer)
+
 
 class ASTReturnExpr(ASTExpr):
     def __init__(self, expr: ASTExpr, location: Location):
         super().__init__(location)
         self.expr = expr
+
+    def pretty_print(self, printer: Printer):
+        printer.print("Return:")
+        with printer.indent():
+            self.expr.pretty_print(printer)
 
 
 class ASTAssign(ASTExpr):
@@ -141,54 +300,60 @@ class ASTAssign(ASTExpr):
         self.name: str = name.ident
         self.value = value
 
+    def pretty_print(self, printer: Printer):
+        printer.print("Assign:")
+        with printer.indent():
+            printer.print(f"Name={self.name}")
+            printer.print(f"Value:")
+            with printer.indent():
+                self.value.pretty_print(printer)
 
-class ASTAddExpr(ASTExpr):
+
+class ASTBinaryExpr(ASTExpr):
+    NAME: str
+
     def __init__(self, left: ASTExpr, right: ASTExpr, location: Location):
         super().__init__(location)
         self.left: ASTExpr = left
         self.right: ASTExpr = right
 
-
-class ASTSubExpr(ASTExpr):
-    def __init__(self, left: ASTExpr, right: ASTExpr, location: Location):
-        super().__init__(location)
-        self.left: ASTExpr = left
-        self.right: ASTExpr = right
-
-
-class ASTMulExpr(ASTExpr):
-    def __init__(self, left: ASTExpr, right: ASTExpr, location: Location):
-        super().__init__(location)
-        self.left: ASTExpr = left
-        self.right: ASTExpr = right
+    def pretty_print(self, printer: Printer):
+        printer.print(f"{self.NAME}:")
+        with printer.indent():
+            printer.print(f"Left:")
+            with printer.indent():
+                self.left.pretty_print(printer)
+            printer.print(f"Right:")
+            with printer.indent():
+                self.right.pretty_print(printer)
 
 
-class ASTDivExpr(ASTExpr):
-    def __init__(self, left: ASTExpr, right: ASTExpr, location: Location):
-        super().__init__(location)
-        self.left: ASTExpr = left
-        self.right: ASTExpr = right
+class ASTAddExpr(ASTBinaryExpr):
+    NAME = "Add"
 
 
-class ASTPowExpr(ASTExpr):
-    def __init__(self, left: ASTExpr, right: ASTExpr, location: Location):
-        super().__init__(location)
-        self.left: ASTExpr = left
-        self.right: ASTExpr = right
+class ASTSubExpr(ASTBinaryExpr):
+    NAME = "Sub"
 
 
-class ASTOrExpr(ASTExpr):
-    def __init__(self, left: ASTExpr, right: ASTExpr, location: Location):
-        super().__init__(location)
-        self.left: ASTExpr = left
-        self.right: ASTExpr = right
+class ASTMulExpr(ASTBinaryExpr):
+    NAME = "Mul"
 
 
-class ASTAndExpr(ASTExpr):
-    def __init__(self, left: ASTExpr, right: ASTExpr, location: Location):
-        super().__init__(location)
-        self.left: ASTExpr = left
-        self.right: ASTExpr = right
+class ASTDivExpr(ASTBinaryExpr):
+    NAME = "Div"
+
+
+class ASTPowExpr(ASTBinaryExpr):
+    NAME = "Pow"
+
+
+class ASTOrExpr(ASTBinaryExpr):
+    NAME = "Or"
+
+
+class ASTAndExpr(ASTBinaryExpr):
+    NAME = "And"
 
 
 class ASTNegExpr(ASTExpr):
@@ -196,11 +361,21 @@ class ASTNegExpr(ASTExpr):
         super().__init__(location)
         self.right = right
 
+    def pretty_print(self, printer: Printer):
+        printer.print("Neg:")
+        with printer.indent():
+            self.right.pretty_print(printer)
+
 
 class ASTNotExpr(ASTExpr):
     def __init__(self, token: Token, right: ASTExpr, location: Location):
         super().__init__(location)
         self.right = right
+
+    def pretty_print(self, printer: Printer):
+        printer.print("Neg:")
+        with printer.indent():
+            self.right.pretty_print(printer)
 
 
 class ASTCallExpr(ASTExpr):
@@ -209,12 +384,31 @@ class ASTCallExpr(ASTExpr):
         self.callee = callee
         self.arguments = arguments
 
+    def pretty_print(self, printer: Printer):
+        printer.print("Call:")
+        with printer.indent():
+            printer.print("Callee:")
+            with printer.indent():
+                self.callee.pretty_print(printer)
+            printer.print("Arguments:")
+            with printer.indent():
+                for arg in self.arguments:
+                    arg.pretty_print(printer)
+
 
 class ASTAttrExpr(ASTExpr):
     def __init__(self, object: ASTExpr, attr: Token, location: Location):
         super().__init__(location)
         self.object = object
         self.attr: str = attr.text
+
+    def pretty_print(self, printer: Printer):
+        printer.print("Attr:")
+        with printer.indent():
+            printer.print("Object:")
+            with printer.indent():
+                self.object.pretty_print(printer)
+            printer.print(f"Name={self.attr}")
 
 
 class ASTIntegerExpr(ASTExpr):
@@ -227,6 +421,9 @@ class ASTIntegerExpr(ASTExpr):
         else:
             self.number: int = int(number.text, 10)
 
+    def pretty_print(self, printer: Printer):
+        printer.print(f"Integer={self.number}")
+
 
 class ASTStringExpr(ASTExpr):
     def __init__(self, string: Token):
@@ -234,11 +431,19 @@ class ASTStringExpr(ASTExpr):
         self.string = string.text[1:-1]
         #TODO replace \ things
 
+    def pretty_print(self, printer: Printer):
+        printer.print(f"String={self.string!r}")
+
 
 class ASTGroupExpr(ASTExpr):
     def __init__(self, expr: ASTExpr, location: Location):
         super().__init__(location)
         self.expr = expr
+
+    def pretty_print(self, printer: Printer):
+        printer.print(f"Group:")
+        with printer.indent():
+            self.expr.pretty_print(printer)
 
 
 class ASTIdentExpr(ASTExpr):
@@ -246,12 +451,19 @@ class ASTIdentExpr(ASTExpr):
         super().__init__(ident.location)
         self.ident: str = ident.text
 
+    def pretty_print(self, printer: Printer):
+        printer.print(f"Ident={self.ident!r}")
+
 
 class ASTType(ASTNode):
-    pass
+    def pretty_print(self, printer: Printer):
+        raise NotImplementedError()
 
 
 class ASTTypeIdent(ASTType):
     def __init__(self, ident: Token):
         super().__init__(ident.location)
         self.ident = ident
+
+    def pretty_print(self, printer: Printer):
+        printer.print(f"Type Ident={self.ident!r}")

@@ -14,7 +14,8 @@ def main():
 
     arguments = parser.parse_args()
 
-    parse_program(arguments.file)
+    program = parse_program(arguments.file)
+    program.pretty_print()
 
 
 main()
