@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from contextlib import contextmanager
 
-from src.common import Location, SourceLocation
-from src.token import Token, TokenType
+from common import Location, SourceLocation
+from tokens import Token, TokenType
 
 
 __all__ = ["ASTFunction", "ASTParameter", "ASTStmt", "ASTLetStmt", "ASTVarStmt", "ASTExprStmt", "ASTExpr", "ASTBlockExpr",
@@ -207,9 +207,12 @@ class ASTTypeVariable(ASTNode):
         printer.print("Type Variable:")
         with printer.indent():
             printer.print(f"Name={self.name}")
-            printer.print(f"Bound:")
-            with printer.indent():
-                self.bound.pretty_print(printer)
+            if self.bound is None:
+                printer.print(f"Bound: None")
+            else:
+                printer.print(f"Bound:")
+                with printer.indent():
+                    self.bound.pretty_print(printer)
 
 
 class ASTStmt(ASTNode):
@@ -256,8 +259,8 @@ class ASTVarStmt(ASTStmt):
 
 
 class ASTExprStmt(ASTStmt):
-    def __init__(self, expr: ASTExpr):
-        super().__init__(expr.location)
+    def __init__(self, expr: ASTExpr, loc: Location):
+        super().__init__(loc)
         self.expr: ASTExpr = expr
 
     def pretty_print(self, printer: Printer):
@@ -461,9 +464,9 @@ class ASTType(ASTNode):
 
 
 class ASTTypeIdent(ASTType):
-    def __init__(self, ident: Token):
-        super().__init__(ident.location)
-        self.ident = ident
+    def __init__(self, ident: str, loc: Location):
+        super().__init__(loc)
+        self.ident: str = ident
 
     def pretty_print(self, printer: Printer):
         printer.print(f"Type Ident={self.ident!r}")

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from src.common import Location
-from src.token import Token
+from common import Location
+from tokens import Token
 
 
 # __all__ = []

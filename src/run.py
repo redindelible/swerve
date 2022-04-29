@@ -4,6 +4,7 @@ from argparse import ArgumentParser
 from pathlib import Path
 
 from parser import parse_program
+from common import CompilerMessage
 
 
 def main():
@@ -14,8 +15,12 @@ def main():
 
     arguments = parser.parse_args()
 
-    program = parse_program(arguments.file)
-    program.pretty_print()
+    try:
+        program = parse_program(arguments.file)
+    except CompilerMessage as msg:
+        msg.display()
+    else:
+        program.pretty_print()
 
 
 main()

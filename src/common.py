@@ -18,7 +18,7 @@ class ParseError(CompilerMessage):
         self.location = location
 
     def display(self):
-        print(self.message, file=stderr)
+        print("Parsing Error: " + self.message, file=stderr)
         print(self.location.in_context(), file=stderr)
 
     def __str__(self):
@@ -34,14 +34,14 @@ class Source:
         recent = 0
         for index, char in enumerate(self.text):
             if char == "\n":
-                self.lines[index] = ""
-                recent = index
+                self.lines[index+1] = ""
+                recent = index+1
             else:
                 self.lines[recent] += char
 
     def get_index_line(self, index: int) -> tuple[int, int, str]:
         for line_no, (start, line) in enumerate(self.lines.items()):
-            if start <= index < start + len(line):
+            if start <= index <= start + len(line):
                 return line_no+1, start, line
         else:
             raise ValueError()
@@ -86,8 +86,8 @@ class SourceLocation(Location):
         ctxt = f"{line_no:> 4}"
         line_no_size = len(ctxt)
         ctxt += f" | {line}\n"
-        caret_len = min(self.length, len(line)-line_start)
-        ctxt += f"{' '*line_no_size}   {' '*line_start}{'^'*caret_len}"
+        caret_len = max(min(self.length, len(line)-line_pos), 1)
+        ctxt += f"{' '*line_no_size}   {' '*line_pos}{'^'*caret_len}"
         if caret_len < self.length:
             ctxt += ">"
         ctxt += "\n"

@@ -3,9 +3,9 @@ from __future__ import annotations
 from typing import Iterator
 from pathlib import Path
 
-from src.ast import *
-from src.common import ParseError, SourceLocation, Source, CommandLineLocation, Location
-from src.token import Token, TokenStream, TokenType
+from ast import *
+from common import ParseError, SourceLocation, Source, CommandLineLocation, Location
+from tokens import Token, TokenStream, TokenType
 
 
 def parse_program(start: Path) -> ASTProgram:
@@ -72,11 +72,11 @@ class ParseState:
         else:
             self._tried_match.append(type)
             if len(self._tried_match) == 1:
-                raise ParseError(f"Expected {self._tried_match[0].value}, got {self.curr.type}", self.curr.location)
+                raise ParseError(f"Expected {self._tried_match[0].value}, but got {self.curr.type.value} instead", self.curr.location)
             elif len(self._tried_match) == 2:
-                raise ParseError(f"Expected {self._tried_match[0].value} or {self._tried_match[1].value}, got {self.curr.type}", self.curr.location)
+                raise ParseError(f"Expected {self._tried_match[0].value} or {self._tried_match[1].value}, but got {self.curr.type.value} instead", self.curr.location)
             else:
-                raise ParseError(f"Expected any of {', '.join(tried.value for tried in self._tried_match)}, got {self.curr.type}", self.curr.location)
+                raise ParseError(f"Expected any of {', '.join(tried.value for tried in self._tried_match[:-1])}, or {self._tried_match[-1].value}, but got {self.curr.type.value} instead", self.curr.location)
 
     def push_loc(self):
         self._start_location.append(self._curr_token.location)
@@ -86,15 +86,13 @@ class ParseState:
 
     def parse(self) -> ASTFile:
         top_levels = []
-        while not self.tokens.is_done():
+        while self.curr.type != TokenType.EOF:
             if self.match(TokenType.IMPORT):
                 top_levels.extend(self.parse_import())
             elif self.match(TokenType.DEF):
                 top_levels.append(self.parse_function())
-            elif self.match(TokenType.STRUCT):
-                top_levels.append(self.parse_struct())
             else:
-                raise ParseError(f"Expected a function or a struct, got {self.curr.type}", self.curr.location)
+                top_levels.append(self.parse_struct())
         return ASTFile(self.source.path, top_levels)
 
     def parse_import(self) -> list[ASTImport]:
@@ -257,7 +255,10 @@ class ParseState:
         if self.match(TokenType.VAR) or self.match(TokenType.LET):
             stmt = self.parse_decl_stmt()
         else:
-            stmt = ASTExprStmt(self.parse_expr())
+            self.push_loc()
+            expr = self.parse_expr()
+            self.expect(TokenType.SEMICOLON)
+            stmt = ASTExprStmt(expr, self.pop_loc())
         return stmt
 
     def parse_decl_stmt(self) -> ASTStmt:
@@ -436,6 +437,7 @@ class ParseState:
             return ASTIdentExpr(self.expect(TokenType.IDENT))
 
     def parse_type(self) -> ASTType:
+        self.push_loc()
         name = self.expect(TokenType.IDENT)
-        return ASTTypeIdent(name)
+        return ASTTypeIdent(name.text, self.pop_loc())
 
