@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from sys import stderr
+from pathlib import Path
 
 
-__all__ = ['CompilerMessage', 'ParseError', 'Source', 'Location', 'BuiltinLocation', 'SourceLocation']
+__all__ = ['CompilerMessage', 'ParseError', 'Source', 'Location', 'BuiltinLocation', 'SourceLocation', 'CommandLineLocation']
 
 
 class CompilerMessage(Exception):
@@ -25,8 +26,8 @@ class ParseError(CompilerMessage):
 
 
 class Source:
-    def __init__(self, name: str, text: str):
-        self.name = name
+    def __init__(self, path: Path, text: str):
+        self.path = path
         self.text = text
         self.size = len(self.text)
         self.lines: dict[int, str] = {0: ""}
@@ -54,6 +55,11 @@ class Location:
 class BuiltinLocation(Location):
     def in_context(self) -> str:
         return "(builtin definition)"
+
+
+class CommandLineLocation(Location):
+    def in_context(self) -> str:
+        return "(in command line invocation)"
 
 
 class SourceLocation(Location):

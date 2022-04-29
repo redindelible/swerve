@@ -1,10 +1,34 @@
 from __future__ import annotations
 
 from typing import Iterator
+from pathlib import Path
 
 from src.ast import *
-from src.common import ParseError, SourceLocation
+from src.common import ParseError, SourceLocation, Source, CommandLineLocation, Location
 from src.token import Token, TokenStream, TokenType
+
+
+def parse_program(start: Path) -> ASTProgram:
+    to_visit: list[tuple[Path, Location]] = [(start.resolve(), CommandLineLocation())]
+    visited: set[Path] = set()
+    files = []
+    while to_visit:
+        next_path, loc = to_visit.pop()
+        if next_path in visited:
+            continue
+        try:
+            text = next_path.read_text()
+        except:
+            raise ParseError(f"Could not read from file '{next_path}'", loc)
+        source = Source(next_path, text)
+        file = ParseState(TokenStream(source)).parse()
+        files.append(file)
+        for top_level in file.top_levels:
+            if isinstance(top_level, ASTImport):
+                path = top_level.path
+                if path.startswith("\"") and path.endswith("\""):
+                    to_visit.append((Path(top_level.path[1:-1]).resolve(), top_level.location))
+    return ASTProgram(files)
 
 
 class ParseState:
@@ -63,20 +87,57 @@ class ParseState:
     def parse(self) -> ASTFile:
         top_levels = []
         while not self.tokens.is_done():
-            top_levels.append(self.parse_top_level())
-        return ASTFile(self.source.name, top_levels)
+            if self.match(TokenType.IMPORT):
+                top_levels.extend(self.parse_import())
+            elif self.match(TokenType.DEF):
+                top_levels.append(self.parse_function())
+            elif self.match(TokenType.STRUCT):
+                top_levels.append(self.parse_struct())
+            else:
+                raise ParseError(f"Expected a function or a struct, got {self.curr.type}", self.curr.location)
+        return ASTFile(self.source.path, top_levels)
 
-    def parse_top_level(self) -> ASTTopLevel:
-        if self.match(TokenType.DEF):
-            return self.parse_function()
-        elif self.match(TokenType.STRUCT):
-            return self.parse_struct()
+    def parse_import(self) -> list[ASTImport]:
+        self.expect(TokenType.IMPORT)
+        self.push_loc()
+        if self.match(TokenType.IDENT):
+            path = self.expect(TokenType.IDENT).text
         else:
-            raise ParseError(f"Expected a function or a struct, got {self.curr.type}", self.curr.location)
+            path = self.expect(TokenType.STRING).text
+        imports = self.parse_import_specifier(path, [])
+        return imports
+
+    def parse_import_specifier(self, path: str, names: list[str]) -> list[ASTImport]:
+        if self.match(TokenType.COLON_COLON):
+            self.expect(TokenType.COLON_COLON)
+            if self.match(TokenType.LEFT_BRACE):
+                self.pop_loc()
+                imports = []
+                self.expect(TokenType.LEFT_BRACE)
+                while not self.match(TokenType.RIGHT_BRACE):
+                    self.push_loc()
+                    name = self.expect(TokenType.IDENT)
+                    imports.extend(self.parse_import_specifier(path, names + [name.text]))
+                    if self.match(TokenType.COMMA):
+                        self.expect(TokenType.COMMA)
+                    else:
+                        break
+                self.expect(TokenType.RIGHT_BRACE)
+                return imports
+            else:
+                name = self.expect(TokenType.IDENT)
+                return self.parse_import_specifier(path, names + [name.text])
+        else:
+            if self.match(TokenType.AS):
+                self.expect(TokenType.AS)
+                as_name = self.expect(TokenType.IDENT)
+                return [ASTImport(path, names, as_name.text, self.pop_loc())]
+            else:
+                return [ASTImport(path, names, None, self.pop_loc())]
 
     def parse_function(self) -> ASTFunction:
         self.push_loc()
-        def_token = self.expect(TokenType.DEF)
+        self.expect(TokenType.DEF)
         name = self.expect(TokenType.IDENT)
 
         parameters: list[ASTParameter] = []
@@ -98,10 +159,11 @@ class ParseState:
         ret_type = self.parse_type()
 
         body = self.parse_block()
-        return ASTFunction(def_token, name, parameters, ret_type, body, self.pop_loc())
+        return ASTFunction(name.text, parameters, ret_type, body, self.pop_loc())
 
     def parse_struct(self) -> ASTStruct:
-        start = self.expect(TokenType.STRUCT)
+        self.push_loc()
+        self.expect(TokenType.STRUCT)
         name = self.expect(TokenType.IDENT)
 
         type_variables = []
@@ -133,8 +195,8 @@ class ParseState:
                 methods.append(self.parse_method())
             else:
                 fields.append(self.parse_struct_field())
-        end = self.expect(TokenType.RIGHT_BRACE)
-        return ASTStruct(name, type_variables, supertraits, fields, methods, start.location.combine(end.location))
+        self.expect(TokenType.RIGHT_BRACE)
+        return ASTStruct(name, type_variables, supertraits, fields, methods, self.pop_loc())
 
     def parse_struct_field(self) -> ASTStructField:
         self.push_loc()

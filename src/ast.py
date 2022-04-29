@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from src.common import Location, SourceLocation
 from src.token import Token, TokenType
 
@@ -8,7 +10,7 @@ __all__ = ["ASTFunction", "ASTParameter", "ASTStmt", "ASTLetStmt", "ASTVarStmt",
     "ASTReturnExpr", "ASTAssign", "ASTAddExpr", "ASTSubExpr", "ASTMulExpr", "ASTDivExpr", "ASTPowExpr", "ASTOrExpr", "ASTAndExpr",
     "ASTNegExpr", "ASTNotExpr", "ASTCallExpr", "ASTAttrExpr", "ASTIntegerExpr", "ASTStringExpr", "ASTGroupExpr", "ASTIdentExpr",
     "ASTType", "ASTTypeIdent", "ASTFile", "ASTNode", "ASTProgram", "ASTTopLevel", "ASTStruct", "ASTTypeVariable", "ASTMethod",
-    "ASTStructField"]
+    "ASTStructField", "ASTImport"]
 
 
 class ASTNode:
@@ -22,8 +24,8 @@ class ASTProgram:
 
 
 class ASTFile:
-    def __init__(self, name: str, top_levels: list[ASTTopLevel]):
-        self.name = name
+    def __init__(self, path: Path, top_levels: list[ASTTopLevel]):
+        self.path = path
         self.top_levels = top_levels
 
 
@@ -31,10 +33,18 @@ class ASTTopLevel(ASTNode):
     pass
 
 
-class ASTFunction(ASTTopLevel):
-    def __init__(self, def_token: Token, name: Token, parameters: list[ASTParameter], return_type: ASTType, body: ASTBlockExpr, location: Location):
+class ASTImport(ASTTopLevel):
+    def __init__(self, path: str, names: list[str], as_name: str | None, location: Location):
         super().__init__(location)
-        self.name: str = name.text
+        self.path = path
+        self.names = names
+        self.as_name = as_name
+
+
+class ASTFunction(ASTTopLevel):
+    def __init__(self, name: str, parameters: list[ASTParameter], return_type: ASTType, body: ASTBlockExpr, location: Location):
+        super().__init__(location)
+        self.name = name
         self.parameters = parameters
         self.return_type = return_type
         self.body = body

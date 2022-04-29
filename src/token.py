@@ -44,6 +44,8 @@ class TokenType(Enum):
     AND = "`and`"
     NOT = "`not`"
     STRUCT = "`struct`"
+    IMPORT = "`import`"
+    AS = "`as`"
     IDENT = "an identifier"
     BINARY = "a binary literal"
     HEX = "a hexadecimal literal"
@@ -75,7 +77,9 @@ KEYWORDS = {
     "or": TokenType.OR,
     "and": TokenType.AND,
     "not": TokenType.NOT,
-    "struct": TokenType.STRUCT
+    "struct": TokenType.STRUCT,
+    "import": TokenType.IMPORT,
+    "as": TokenType.AS,
 }
 
 
