@@ -71,7 +71,12 @@ class ASTImport(ASTTopLevel):
         super().__init__(location)
         self.path = path
         self.names = names
-        self.as_name = as_name
+        if as_name is not None:
+            self.as_name = as_name
+        elif len(names) == 0:
+            self.as_name = path.stem
+        else:
+            self.as_name = names[-1]
 
     def pretty_print(self, printer: Printer):
         printer.print("Import:")

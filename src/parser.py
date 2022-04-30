@@ -115,7 +115,7 @@ class ParseState:
             else:
                 path = result
         else:
-            path = Path(self.expect(TokenType.STRING).text)
+            path = Path(self.expect(TokenType.STRING).text[1:-1])
         imports = self.parse_import_specifier(path, [])
         return imports
 

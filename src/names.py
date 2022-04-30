@@ -5,6 +5,12 @@ from ir import IRValueDecl, IRTypeDecl
 from common import BuiltinLocation, CompilerMessage, ErrorType, Location, Path
 
 
+def resolve_names(program: ASTProgram):
+    resolver = ResolveNames(program)
+    resolver.collect_names()
+    resolver.resolve_imports()
+
+
 class Namespace:
     def __init__(self):
         self.value_names: dict[str, IRValueDecl] = {}
@@ -145,40 +151,44 @@ class ResolveNames:
                     all_imports.append((top_level, ns))
                     ns.not_yet_imported.add(top_level.as_name)
 
+        waiting_imports: list[tuple[ASTImport, Namespace]] = []
         while all_imports:
-            for (ast_import, import_ns) in all_imports:
-                ast_import: ASTImport
-                import_ns: Namespace
-                file_ns = self.file_namespaces[file_paths[ast_import.path]]
-                if len(ast_import.names) == 0:
-                    import_ns.declare_namespace(ast_import.path.stem, file_ns, ast_import.location)
-                else:
-                    ns = file_ns
-                    for namespace_name in ast_import.names[:-1]:
-                        if namespace_name in ns.not_yet_imported:
-                            break
-                        ns = ns.get_namespace(namespace_name, ast_import.location)
-                    else:
-                        name = ast_import.names[-1]
-                        if name not in ns.not_yet_imported:
-                            any_imported = False
-                            if ns.has_namespace(name):
-                                import_ns.declare_namespace(ast_import.as_name, ns.get_namespace(name, ast_import.location), ast_import.location)
-                                any_imported = True
-                            if ns.has_value(name):
-                                import_ns.declare_value(ast_import.as_name, ns.get_value(name, ast_import.location))
-                                any_imported = True
-                            if ns.has_type(name):
-                                import_ns.declare_type(ast_import.as_name, ns.get_type(name, ast_import.location))
-                                any_imported = True
-                            if not any_imported:
-                                raise CompilerMessage(ErrorType.COMPILATION, f"No name '{name}' in scope", ast_import.location)
-                            # if we've imported something, break the for-loop and go through the while loop agan
-                            break
-                    # this name is dependent on a not yet imported name, so just go to the next import and check that
+            ast_import: ASTImport
+            import_ns: Namespace
+            ast_import, import_ns = all_imports.pop()
+            file_ns = self.file_namespaces[file_paths[ast_import.path.resolve()]]
+            if len(ast_import.names) == 0:
+                import_ns.declare_namespace(ast_import.path.stem, file_ns, ast_import.location)
+                all_imports.extend(waiting_imports)
+                waiting_imports.clear()
             else:
-                # we only come here if we've gone through every import and all of them depend on a name not yet imported
-                pass
+                ns = file_ns
+                for namespace_name in ast_import.names[:-1]:
+                    if namespace_name in ns.not_yet_imported:
+                        break
+                    ns = ns.get_namespace(namespace_name, ast_import.location)
+                else:
+                    name = ast_import.names[-1]
+                    if name not in ns.not_yet_imported:
+                        any_imported = False
+                        if ns.has_namespace(name):
+                            import_ns.declare_namespace(ast_import.as_name, ns.get_namespace(name, ast_import.location), ast_import.location)
+                            any_imported = True
+                        if ns.has_value(name):
+                            import_ns.declare_value(ast_import.as_name, ns.get_value(name, ast_import.location))
+                            any_imported = True
+                        if ns.has_type(name):
+                            import_ns.declare_type(ast_import.as_name, ns.get_type(name, ast_import.location))
+                            any_imported = True
+                        if not any_imported:
+                            raise CompilerMessage(ErrorType.COMPILATION, f"No name '{name}' in scope", ast_import.location)
+                        # if we've imported something, break the for-loop and go through the while loop agan
+                        all_imports.extend(waiting_imports)
+                        waiting_imports.clear()
+                    else:
+                        waiting_imports.append((ast_import, import_ns))
+        if len(waiting_imports) != 0:
+            raise CompilerMessage(ErrorType.COMPILATION, f"Cyclic imports, one such shown below", waiting_imports[0][0].location)
 
     def resolve_names(self):
         self.push(self.program_namespace)

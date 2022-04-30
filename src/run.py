@@ -4,8 +4,9 @@ from argparse import ArgumentParser
 from pathlib import Path
 from sys import stderr
 
-from parser import parse_program
 from common import CompilerMessage
+from parser import parse_program
+from names import resolve_names
 
 
 def main():
@@ -23,8 +24,15 @@ def main():
         program = parse_program(arguments.file, import_dirs)
     except CompilerMessage as msg:
         msg.display(stderr)
-    else:
-        program.pretty_print()
+        return
+    program.pretty_print()
+
+    try:
+        resolve_names(program)
+    except CompilerMessage as msg:
+        msg.display(stderr)
+        raise
+        # return
 
 
 main()
