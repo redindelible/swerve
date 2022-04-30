@@ -3,7 +3,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Iterator
 
-from common import ParseError, Source, SourceLocation
+from common import CompilerMessage, ErrorType, Source, SourceLocation
 
 
 __all__ = ['TokenType', 'Token', 'TokenStream']
@@ -215,10 +215,10 @@ class TokenStream:
                 self._advance()
                 while self._curr != "\"":
                     if self._curr == "\n":
-                        raise ParseError("A string literal cannot span multiple lines", self._get_token(TokenType.ERROR).location)
+                        raise CompilerMessage(ErrorType.PARSE, "A string literal cannot span multiple lines", self._get_token(TokenType.ERROR).location)
                     if self._curr == "\\":
                         if self._next == "\n":
-                            raise ParseError("A string literal cannot span multiple lines", self._get_token(TokenType.ERROR).location)
+                            raise CompilerMessage(ErrorType.PARSE, "A string literal cannot span multiple lines", self._get_token(TokenType.ERROR).location)
                         self._advance()
                     self._advance()
                 self._advance()
@@ -240,8 +240,8 @@ class TokenStream:
                         while self._curr.isnumeric():
                             if self._curr not in "01":
                                 self._advance()
-                                raise ParseError("Digits other than 0 and 1 are not allowed in a binary literal.",
-                                                 self._get_token(TokenType.ERROR).location)
+                                raise CompilerMessage(ErrorType.PARSE, "Digits other than 0 and 1 are not allowed in a binary literal.",
+                                                      self._get_token(TokenType.ERROR).location)
                             else:
                                 self._advance()
                         yield self._get_token(TokenType.BINARY)
@@ -263,7 +263,7 @@ class TokenStream:
             else:
                 self._new_token()
                 self._advance()
-                raise ParseError(f"Unexpected character `{self._curr}`.", self._get_token(TokenType.ERROR).location)
+                raise CompilerMessage(ErrorType.PARSE, f"Unexpected character `{self._curr}`.", self._get_token(TokenType.ERROR).location)
         self._new_token()
         while True:
             yield self._get_token(TokenType.EOF)

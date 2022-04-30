@@ -4,11 +4,11 @@ from typing import Iterator
 from pathlib import Path
 
 from ast import *
-from common import ParseError, SourceLocation, Source, CommandLineLocation, Location
+from common import CompilerMessage, ErrorType, SourceLocation, Source, CommandLineLocation, Location
 from tokens import Token, TokenStream, TokenType
 
 
-def parse_program(start: Path) -> ASTProgram:
+def parse_program(start: Path, import_dirs: list[Path]) -> ASTProgram:
     to_visit: list[tuple[Path, Location]] = [(start.resolve(), CommandLineLocation())]
     visited: set[Path] = set()
     files = []
@@ -18,24 +18,33 @@ def parse_program(start: Path) -> ASTProgram:
             continue
         try:
             text = next_path.read_text()
-        except:
-            raise ParseError(f"Could not read from file '{next_path}'", loc)
+        except Exception as err:
+            raise CompilerMessage(ErrorType.PARSE, f"Could not read from file '{next_path}'", loc)
         source = Source(next_path, text)
-        file = ParseState(TokenStream(source)).parse()
+        file = ParseState(TokenStream(source), import_dirs).parse()
         files.append(file)
         for top_level in file.top_levels:
             if isinstance(top_level, ASTImport):
                 path = top_level.path
-                if path.startswith("\"") and path.endswith("\""):
-                    to_visit.append((Path(top_level.path[1:-1]).resolve(), top_level.location))
+                to_visit.append((path.resolve(), top_level.location))
+        visited.add(next_path)
     return ASTProgram(files)
 
 
+def search_dirs(dirs: list[Path], name: str) -> Path | None:
+    for dir in dirs:
+        if (dir / name).exists() and (dir / name).is_file():
+            return dir / name
+    return None
+
+
 class ParseState:
-    def __init__(self, tokens: TokenStream):
+    def __init__(self, tokens: TokenStream, import_dirs: list[Path]):
         self.source = tokens.source
         self.tokens = tokens
         self.stream: Iterator[Token] = tokens.iter_tokens()
+
+        self.import_dirs = import_dirs
 
         self._curr_token = next(self.stream)
         self._last_token = self._curr_token
@@ -72,11 +81,11 @@ class ParseState:
         else:
             self._tried_match.append(type)
             if len(self._tried_match) == 1:
-                raise ParseError(f"Expected {self._tried_match[0].value}, but got {self.curr.type.value} instead", self.curr.location)
+                raise CompilerMessage(ErrorType.PARSE, f"Expected {self._tried_match[0].value}, but got {self.curr.type.value} instead", self.curr.location)
             elif len(self._tried_match) == 2:
-                raise ParseError(f"Expected {self._tried_match[0].value} or {self._tried_match[1].value}, but got {self.curr.type.value} instead", self.curr.location)
+                raise CompilerMessage(ErrorType.PARSE, f"Expected {self._tried_match[0].value} or {self._tried_match[1].value}, but got {self.curr.type.value} instead", self.curr.location)
             else:
-                raise ParseError(f"Expected any of {', '.join(tried.value for tried in self._tried_match[:-1])}, or {self._tried_match[-1].value}, but got {self.curr.type.value} instead", self.curr.location)
+                raise CompilerMessage(ErrorType.PARSE, f"Expected any of {', '.join(tried.value for tried in self._tried_match[:-1])}, or {self._tried_match[-1].value}, but got {self.curr.type.value} instead", self.curr.location)
 
     def push_loc(self):
         self._start_location.append(self._curr_token.location)
@@ -99,13 +108,18 @@ class ParseState:
         self.expect(TokenType.IMPORT)
         self.push_loc()
         if self.match(TokenType.IDENT):
-            path = self.expect(TokenType.IDENT).text
+            token = self.expect(TokenType.IDENT)
+            result = search_dirs(self.import_dirs, token.text + ".sw")
+            if result is None:
+                raise CompilerMessage(ErrorType.PARSE, f"Could not read from file '{token.text}.sw'", token.location)
+            else:
+                path = result
         else:
-            path = self.expect(TokenType.STRING).text
+            path = Path(self.expect(TokenType.STRING).text)
         imports = self.parse_import_specifier(path, [])
         return imports
 
-    def parse_import_specifier(self, path: str, names: list[str]) -> list[ASTImport]:
+    def parse_import_specifier(self, path: Path, names: list[str]) -> list[ASTImport]:
         if self.match(TokenType.COLON_COLON):
             self.expect(TokenType.COLON_COLON)
             if self.match(TokenType.LEFT_BRACE):
@@ -315,7 +329,7 @@ class ParseState:
                 right = self.parse_precedence_2()
                 return ASTAssign(left, right, self.pop_loc())
             else:
-                raise ParseError("Can only assign to identifiers", left.location)
+                raise CompilerMessage(ErrorType.PARSE, "Can only assign to identifiers", left.location)
         else:
             return left
 

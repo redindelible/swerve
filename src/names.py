@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from ast import *
 from ir import IRValueDecl, IRTypeDecl
-from common import BuiltinLocation, CompilerMessage
+from common import BuiltinLocation, CompilerMessage, ErrorType, Location, Path
 
 
 class Namespace:
@@ -10,6 +10,73 @@ class Namespace:
         self.value_names: dict[str, IRValueDecl] = {}
         self.type_names: dict[str, IRTypeDecl] = {}
         self.namespace_names: dict[str, Namespace] = {}
+
+        self.not_yet_imported: set[str] = set()
+
+    def declare_namespace(self, name: str, namespace: Namespace, loc: Location) -> Namespace:
+        validate_name(name, loc)
+        if self.has_namespace(name):
+            raise CompilerMessage(ErrorType.COMPILATION, f"Name '{name}' is already used as a namespace in this scope", loc)
+        self.namespace_names[name] = namespace
+        return namespace
+
+    def has_namespace(self, name: str) -> bool:
+        return name in self.namespace_names
+
+    def get_namespace(self, name: str, loc: Location) -> Namespace:
+        if self.has_namespace(name):
+            return self.namespace_names[name]
+        else:
+            raise CompilerMessage(ErrorType.COMPILATION, f"Name '{name}' does not exist for a namespace in this scope", loc)
+
+    def has_value(self, name: str) -> bool:
+        return name in self.value_names
+
+    def declare_value(self, name: str, decl: IRValueDecl) -> IRValueDecl:
+        validate_name(name, decl.location)
+        if self.has_value(name):
+            raise CompilerMessage(ErrorType.COMPILATION, f"Name '{name}' is already used as a value in this scope", decl.location,
+                                  [CompilerMessage(ErrorType.NOTE, "Previously declared here", self.get_value(name, decl.location).location)])
+        self.value_names[name] = decl
+        return decl
+
+    def get_value(self, name: str, loc: Location) -> IRValueDecl:
+        if self.has_value(name):
+            return self.value_names[name]
+        else:
+            raise CompilerMessage(ErrorType.COMPILATION, f"Name '{name}' does not exist for a value in this scope", loc)
+
+    def has_type(self, name: str) -> bool:
+        return name in self.type_names
+
+    def declare_type(self, name: str, decl: IRTypeDecl) -> IRTypeDecl:
+        validate_name(name, decl.location)
+        if self.has_type(name):
+            raise CompilerMessage(ErrorType.COMPILATION, f"Name '{name}' is already used as a type in this scope", decl.location,
+                                  [CompilerMessage(ErrorType.NOTE, "Previously declared here", self.get_type(name, decl.location).location)])
+        self.type_names[name] = decl
+        return decl
+
+    def get_type(self, name: str, loc: Location) -> IRTypeDecl:
+        if self.has_type(name):
+            return self.type_names[name]
+        else:
+            raise CompilerMessage(ErrorType.COMPILATION, f"Name '{name}' does not exist for a type in this scope", loc)
+
+
+def check_name(name: str) -> bool:
+    if len(name) == 0:
+        return False
+    if not (name[0] == "_" or name[0].isalpha()):
+        return False
+    if not all(c == "_" or c.isalnum() for c in name[1:]):
+        return False
+    return True
+
+
+def validate_name(name: str, loc: Location):
+    if not check_name(name):
+        raise CompilerMessage(ErrorType.COMPILATION, f"'{name}' is not a valid name", loc)
 
 
 class ResolveNames:
@@ -29,9 +96,9 @@ class ResolveNames:
     def pop(self) -> Namespace:
         return self.namespaces.pop()
 
-    def declare_namespace(self, name: str, namespace: Namespace) -> Namespace:
-        self.namespaces[-1].namespace_names[name] = namespace
-        return namespace
+    @property
+    def curr_ns(self) -> Namespace:
+        return self.namespaces[-1]
 
     def declare_value(self, name: str, decl: IRValueDecl) -> IRValueDecl:
         self.namespaces[-1].value_names[name] = decl
@@ -58,8 +125,6 @@ class ResolveNames:
                 self.collect_function(top_level)
             elif isinstance(top_level, ASTStruct):
                 self.collect_struct(top_level)
-            else:
-                raise Exception()
         self.file_namespaces[file] = self.pop()
 
     def collect_function(self, function: ASTFunction):
@@ -69,9 +134,59 @@ class ResolveNames:
     def collect_struct(self, struct: ASTStruct):
         type_decl = self.declare_type(struct.name, IRTypeDecl(None, struct.location))
 
-    # def resolve_names(self):
-    #     self.push(self.program_namespace)
-    #     for file in self.program.files:
-    #         self.resolve_file()
-    #
-    # def resolve_file(self):
+    def resolve_imports(self):
+        file_paths: dict[Path, ASTFile] = {file.path.resolve(): file for file in self.program.files}
+        self.push(self.program_namespace)
+        all_imports: list[tuple[ASTImport, Namespace]] = []
+        for file in self.program.files:
+            ns = self.file_namespaces[file]
+            for top_level in file.top_levels:
+                if isinstance(top_level, ASTImport):
+                    all_imports.append((top_level, ns))
+                    ns.not_yet_imported.add(top_level.as_name)
+
+        while all_imports:
+            for (ast_import, import_ns) in all_imports:
+                ast_import: ASTImport
+                import_ns: Namespace
+                file_ns = self.file_namespaces[file_paths[ast_import.path]]
+                if len(ast_import.names) == 0:
+                    import_ns.declare_namespace(ast_import.path.stem, file_ns, ast_import.location)
+                else:
+                    ns = file_ns
+                    for namespace_name in ast_import.names[:-1]:
+                        if namespace_name in ns.not_yet_imported:
+                            break
+                        ns = ns.get_namespace(namespace_name, ast_import.location)
+                    else:
+                        name = ast_import.names[-1]
+                        if name not in ns.not_yet_imported:
+                            any_imported = False
+                            if ns.has_namespace(name):
+                                import_ns.declare_namespace(ast_import.as_name, ns.get_namespace(name, ast_import.location), ast_import.location)
+                                any_imported = True
+                            if ns.has_value(name):
+                                import_ns.declare_value(ast_import.as_name, ns.get_value(name, ast_import.location))
+                                any_imported = True
+                            if ns.has_type(name):
+                                import_ns.declare_type(ast_import.as_name, ns.get_type(name, ast_import.location))
+                                any_imported = True
+                            if not any_imported:
+                                raise CompilerMessage(ErrorType.COMPILATION, f"No name '{name}' in scope", ast_import.location)
+                            # if we've imported something, break the for-loop and go through the while loop agan
+                            break
+                    # this name is dependent on a not yet imported name, so just go to the next import and check that
+            else:
+                # we only come here if we've gone through every import and all of them depend on a name not yet imported
+                pass
+
+    def resolve_names(self):
+        self.push(self.program_namespace)
+        for file in self.program.files:
+            self.resolve_file(file)
+
+    def resolve_file(self, file: ASTFile):
+        self.push(self.file_namespaces[file])
+        for top_level in file.top_levels:
+            if isinstance(top_level, ASTFunction):
+                pass

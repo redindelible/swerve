@@ -1,28 +1,39 @@
 from __future__ import annotations
 
-from sys import stderr
+from enum import Enum
+from textwrap import indent
 from pathlib import Path
 
+from typing import IO
 
-__all__ = ['CompilerMessage', 'ParseError', 'Source', 'Location', 'BuiltinLocation', 'SourceLocation', 'CommandLineLocation']
+__all__ = ['CompilerMessage', 'ErrorType', 'Source', 'Location', 'BuiltinLocation', 'SourceLocation', 'CommandLineLocation', 'Path']
+
+
+class ErrorType(Enum):
+    PARSE = "Parsing Error"
+    COMPILATION = "Compilation Error"
+    NOTE = "Note"
 
 
 class CompilerMessage(Exception):
-    def display(self):
-        raise NotImplementedError()
+    def __init__(self, error_type: ErrorType, message: str, location: Location | None = None, notes: list[CompilerMessage] = None):
+        self.error_type: ErrorType = error_type
+        self.message: str = message
+        self.location: Location | None = location
+        self.notes: list[CompilerMessage] = [] if notes is None else notes
 
+    def display(self, stream: IO):
+        print(str(self), file=stream)
 
-class ParseError(CompilerMessage):
-    def __init__(self, message: str, location: Location):
-        self.message = message
-        self.location = location
-
-    def display(self):
-        print("Parsing Error: " + self.message, file=stderr)
-        print(self.location.in_context(), file=stderr)
-
-    def __str__(self):
-        return self.message + "\n" + self.location.in_context()
+    def __str__(self) -> str:
+        s = f"{self.error_type.value}: {self.message}"
+        if self.location is not None:
+            s += "\n"
+            s += self.location.in_context()
+        for note in self.notes:
+            s += "\n"
+            s += indent(str(note), ' | ')
+        return s
 
 
 class Source:

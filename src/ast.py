@@ -67,7 +67,7 @@ class ASTTopLevel(ASTNode):
 
 
 class ASTImport(ASTTopLevel):
-    def __init__(self, path: str, names: list[str], as_name: str | None, location: Location):
+    def __init__(self, path: Path, names: list[str], as_name: str | None, location: Location):
         super().__init__(location)
         self.path = path
         self.names = names
