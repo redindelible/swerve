@@ -181,7 +181,7 @@ class ResolveNames:
                             import_ns.declare_type(ast_import.as_name, ns.get_type(name, ast_import.location))
                             any_imported = True
                         if not any_imported:
-                            raise CompilerMessage(ErrorType.COMPILATION, f"No name '{name}' in scope", ast_import.location)
+                            raise CompilerMessage(ErrorType.COMPILATION, f"No name '{name}' in '{ast_import.path}'", ast_import.location)
                         # if we've imported something, break the for-loop and go through the while loop agan
                         all_imports.extend(waiting_imports)
                         waiting_imports.clear()

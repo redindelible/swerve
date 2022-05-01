@@ -31,8 +31,8 @@ def main():
         resolve_names(program)
     except CompilerMessage as msg:
         msg.display(stderr)
-        raise
-        # return
+        # raise
+        return
 
 
 main()
