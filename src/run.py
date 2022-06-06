@@ -7,6 +7,7 @@ from sys import stderr
 from common import CompilerMessage
 from parser import parse_program
 from names import resolve_names
+from infer import infer_types
 
 
 def main():
@@ -28,10 +29,15 @@ def main():
     program.pretty_print()
 
     try:
-        resolve_names(program)
+        program = resolve_names(program)
     except CompilerMessage as msg:
         msg.display(stderr)
-        # raise
+        return
+
+    try:
+        infer_types(program)
+    except CompilerMessage as msg:
+        msg.display(stderr)
         return
 
 

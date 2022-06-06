@@ -46,6 +46,11 @@ class TokenType(Enum):
     STRUCT = "`struct`"
     IMPORT = "`import`"
     AS = "`as`"
+    IF = "`if`"
+    IN = "`in`"
+    ELSE = "`else`"
+    WHILE = "`while`"
+    FOR = "`for`"
     IDENT = "an identifier"
     BINARY = "a binary literal"
     HEX = "a hexadecimal literal"
@@ -80,6 +85,11 @@ KEYWORDS = {
     "struct": TokenType.STRUCT,
     "import": TokenType.IMPORT,
     "as": TokenType.AS,
+    "if": TokenType.IF,
+    "in": TokenType.IN,
+    "else": TokenType.ELSE,
+    "while": TokenType.WHILE,
+    "for": TokenType.FOR
 }
 
 

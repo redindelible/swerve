@@ -267,13 +267,38 @@ class ParseState:
 
     def parse_stmt(self) -> ASTStmt:
         if self.match(TokenType.VAR) or self.match(TokenType.LET):
-            stmt = self.parse_decl_stmt()
+            return self.parse_decl_stmt()
+        elif self.match(TokenType.RETURN):
+            self.push_loc()
+            ret_token = self.expect(TokenType.RETURN)
+            expr = self.parse_expr()
+            self.expect(TokenType.SEMICOLON)
+            return ASTReturnStmt(expr, self.pop_loc())
+        elif self.match(TokenType.WHILE):
+            return self.parse_while()
+        elif self.match(TokenType.FOR):
+            return self.parse_for()
         else:
             self.push_loc()
             expr = self.parse_expr()
             self.expect(TokenType.SEMICOLON)
-            stmt = ASTExprStmt(expr, self.pop_loc())
-        return stmt
+            return ASTExprStmt(expr, self.pop_loc())
+
+    def parse_while(self):
+        self.push_loc()
+        self.expect(TokenType.WHILE)
+        cond = self.parse_expr()
+        body = self.parse_expr()
+        return ASTWhileStmt(cond, body, self.pop_loc())
+
+    def parse_for(self):
+        self.push_loc()
+        self.expect(TokenType.FOR)
+        iter_var = self.expect(TokenType.IDENT).text
+        self.expect(TokenType.IN)
+        iterator = self.parse_expr()
+        body = self.parse_expr()
+        return ASTForStmt(iter_var, iterator, body, self.pop_loc())
 
     def parse_decl_stmt(self) -> ASTStmt:
         self.push_loc()
@@ -291,6 +316,7 @@ class ParseState:
             type = None
         self.expect(TokenType.EQUAL)
         init = self.parse_expr()
+        self.expect(TokenType.SEMICOLON)
         if is_var:
             return ASTVarStmt(token, name, type, init, self.pop_loc())
         else:
@@ -300,15 +326,24 @@ class ParseState:
         return self.parse_precedence_1()
 
     def parse_precedence_1(self) -> ASTExpr:
-        if self.match(TokenType.RETURN):
-            self.push_loc()
-            ret_token = self.expect(TokenType.RETURN)
-            expr = self.parse_expr()
-            return ASTReturnExpr(expr, self.pop_loc())
+        if self.match(TokenType.IF):
+            return self.parse_if()
         elif self.match(TokenType.LEFT_BRACE):
             return self.parse_block()
         else:
             return self.parse_precedence_2()
+
+    def parse_if(self) -> ASTIfExpr:
+        self.push_loc()
+        self.expect(TokenType.IF)
+        cond = self.parse_expr()
+        then_do = self.parse_expr()
+        if self.match(TokenType.ELSE):
+            self.expect(TokenType.ELSE)
+            else_do = self.parse_expr()
+        else:
+            else_do = None
+        return ASTIfExpr(cond, then_do, else_do, self.pop_loc())
 
     def parse_block(self) -> ASTBlockExpr:
         self.push_loc()

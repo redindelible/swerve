@@ -1,7 +1,3 @@
-import "test/test.sw"::LinkedList
+def io() -> int {}
 
-
-
-def main() -> int {
-    return 0;
-}
+def path() -> int {}
