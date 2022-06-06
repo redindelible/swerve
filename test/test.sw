@@ -6,6 +6,6 @@ struct Holder {
 
 
 def main() -> int {
-    let a: int = 3;
+    let a: int = #new[Holder](3);
     return a;
 }

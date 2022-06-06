@@ -273,7 +273,7 @@ class TokenStream:
             else:
                 self._new_token()
                 self._advance()
-                raise CompilerMessage(ErrorType.PARSE, f"Unexpected character `{self._curr}`.", self._get_token(TokenType.ERROR).location)
+                raise CompilerMessage(ErrorType.PARSE, f"Unexpected character `{self._last}`.", self._get_token(TokenType.ERROR).location)
         self._new_token()
         while True:
             yield self._get_token(TokenType.EOF)
