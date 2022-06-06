@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ast import *
+from swc_ast import *
 from ir import *
 from common import BuiltinLocation, CompilerMessage, ErrorType, Location, Path
 
@@ -129,7 +129,7 @@ class ResolveNames:
 
     def collect_program(self, program: ASTProgram):
         ns = self.push(self.program_namespace)
-        ns.declare_type("int", IRTypeDecl(IRIntegerType(32), BuiltinLocation()))
+        ns.declare_type("int", IRTypeDecl(IRIntegerType(64), BuiltinLocation()))
         ns.declare_type("str", IRTypeDecl(IRStringType(), BuiltinLocation()))
         for file in program.files:
             self.collect_file(file)

@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Iterator
 from pathlib import Path
 
-from ast import *
+from swc_ast import *
 from common import CompilerMessage, ErrorType, SourceLocation, Source, CommandLineLocation, Location
 from tokens import Token, TokenStream, TokenType
 
