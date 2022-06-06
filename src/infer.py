@@ -37,7 +37,7 @@ class BidirectionalTypeInference:
             raise ValueError()
         function.return_type = resolved
 
-        function.decl.type = IRFunctionType(param_types, resolved)
+        function.function_type = function.decl.type = IRFunctionType(param_types, resolved)
 
     def infer_function_bodies(self, function: IRFunction):
         self.expected_return_type = function.return_type

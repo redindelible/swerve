@@ -191,6 +191,8 @@ class IRFunction(IRNode):
         self.return_type = return_type
         self.body = body
 
+        self.function_type: IRFunctionType | None = None
+
 
 class IRParameter(IRNode):
     def __init__(self, decl: IRValueDecl, name: str, type: IRType):

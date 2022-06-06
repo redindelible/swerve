@@ -8,6 +8,7 @@ from common import CompilerMessage
 from parser import parse_program
 from names import resolve_names
 from infer import infer_types
+from llvmgen import generate_llvm
 
 
 def main():
@@ -26,7 +27,7 @@ def main():
     except CompilerMessage as msg:
         msg.display(stderr)
         return
-    program.pretty_print()
+    # program.pretty_print()
 
     try:
         program = resolve_names(program)
@@ -40,5 +41,12 @@ def main():
         msg.display(stderr)
         return
 
+    try:
+        module = generate_llvm(program)
+    except CompilerMessage as msg:
+        msg.display(stderr)
+        return
+
+    print(module)
 
 main()
