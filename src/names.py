@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from swc_ast import *
-from ir import *
+from swc_ir import *
 from common import BuiltinLocation, CompilerMessage, ErrorType, Location, Path
 
 

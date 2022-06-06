@@ -139,7 +139,7 @@ class IRProgram:
 
 
 class IRStruct:
-    def __init__(self, type_decl: IRTypeDecl, name: str, supertraits: list[IRStruct], fields: dict[str, IRType], methods: list[IRMethod]):
+    def __init__(self, type_decl: IRTypeDecl, name: str, supertraits: list[IRType], fields: dict[str, IRType], methods: list[IRMethod]):
         self.type_decl = type_decl
         self.name = name
         self.supertraits = supertraits
@@ -153,6 +153,7 @@ class IRGenericStruct:
         self.name = name
         self.type_vars = type_vars
         self.supertraits = supertraits
+        self.methods = methods
         self.fields = fields
 
 

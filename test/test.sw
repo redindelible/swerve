@@ -1,5 +1,11 @@
 
+
+struct Holder {
+    number: int
+}
+
+
 def main() -> int {
-    let a := 3;
+    let a: int = 3;
     return a;
 }

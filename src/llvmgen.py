@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ir import *
+from swc_ir import *
 from common import BuiltinLocation, CompilerMessage, ErrorType, Location, Path
 from llvmlite import ir
 

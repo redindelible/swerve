@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ir import *
+from swc_ir import *
 from common import BuiltinLocation, CompilerMessage, ErrorType, Location, Path
 
 
@@ -16,13 +16,24 @@ class BidirectionalTypeInference:
         self.expected_return_type: IRResolvedType | None = None
 
     def infer_types(self):
-        for function in self.program.functions:
-            self.infer_function_types(function)
+        for generic_struct in self.program.generic_structs:
+            self.infer_generic_struct_type(generic_struct)
 
         for function in self.program.functions:
-            self.infer_function_bodies(function)
+            self.infer_function_type(function)
 
-    def infer_function_types(self, function: IRFunction):
+        for function in self.program.functions:
+            self.infer_function_body(function)
+
+    def infer_generic_struct_type(self, generic_struct: IRGenericStruct):
+        if len(generic_struct.type_vars) == 0:
+            struct = IRStruct(generic_struct.type_decl, generic_struct.name, generic_struct.supertraits, generic_struct.fields, generic_struct.methods)
+            self.program.structs.append(struct)
+            struct.type_decl.type = IRStructType(struct)
+        else:
+            raise ValueError()
+
+    def infer_function_type(self, function: IRFunction):
         param_types = []
         for param in function.parameters:
             resolved = self.resolve_type(param.type)
@@ -39,7 +50,7 @@ class BidirectionalTypeInference:
 
         function.function_type = function.decl.type = IRFunctionType(param_types, resolved)
 
-    def infer_function_bodies(self, function: IRFunction):
+    def infer_function_body(self, function: IRFunction):
         self.expected_return_type = function.return_type
 
         for stmt in function.body.body:
