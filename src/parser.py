@@ -98,7 +98,7 @@ class ParseState:
         while self.curr.type != TokenType.EOF:
             if self.match(TokenType.IMPORT):
                 top_levels.extend(self.parse_import())
-            elif self.match(TokenType.DEF):
+            elif self.match(TokenType.FN):
                 top_levels.append(self.parse_function())
             else:
                 top_levels.append(self.parse_struct())
@@ -149,7 +149,7 @@ class ParseState:
 
     def parse_function(self) -> ASTFunction:
         self.push_loc()
-        self.expect(TokenType.DEF)
+        self.expect(TokenType.FN)
         name = self.expect(TokenType.IDENT)
 
         parameters: list[ASTParameter] = []
@@ -203,7 +203,7 @@ class ParseState:
         fields: list[ASTStructField] = []
         self.expect(TokenType.LEFT_BRACE)
         while not self.match(TokenType.RIGHT_BRACE):
-            if self.match(TokenType.DEF):
+            if self.match(TokenType.FN):
                 methods.append(self.parse_method())
             else:
                 fields.append(self.parse_struct_field())
@@ -219,7 +219,7 @@ class ParseState:
 
     def parse_method(self) -> ASTMethod:
         self.push_loc()
-        start = self.expect(TokenType.DEF)
+        start = self.expect(TokenType.FN)
 
         if self.match(TokenType.COLON_COLON):
             self.expect(TokenType.COLON_COLON)

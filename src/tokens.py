@@ -36,7 +36,7 @@ class TokenType(Enum):
     EQUAL_EQUAL = "`==`"
     SEMICOLON = "`;`"
     COMMA = "`,`"
-    DEF = "`def`"
+    FN = "`fn`"
     RETURN = "`return`"
     LET = "`let`"
     VAR = "`var`"
@@ -75,7 +75,7 @@ SIMPLE_TOKENS = {
 
 
 KEYWORDS = {
-    "def": TokenType.DEF,
+    "fn": TokenType.FN,
     "return": TokenType.RETURN,
     "let": TokenType.LET,
     "var": TokenType.VAR,
