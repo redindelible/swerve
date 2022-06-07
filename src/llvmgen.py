@@ -3,10 +3,16 @@ from __future__ import annotations
 from swc_ir import *
 from common import BuiltinLocation, CompilerMessage, ErrorType, Location, Path
 from llvmlite import ir
+from llvmlite import binding as llvm
 
 
 def generate_llvm(program: IRProgram) -> ir.Module:
+    llvm.initialize()
+    llvm.initialize_native_target()
+    llvm.initialize_native_asmprinter()
+
     gen = LLVMGen(program)
+    gen.load_external_functions()
     gen.load_structs()
     gen.generate_functions()
     return gen.module
@@ -16,12 +22,26 @@ class LLVMGen:
     def __init__(self, program: IRProgram):
         self.program = program
         self.module = ir.Module()
+        self.target_data = llvm.Target.from_default_triple().create_target_machine(codemodel="default").target_data
 
-        self.integer_types: dict[int, ir.IntType] = {}
+        self.void_type = ir.VoidType()
+        self.void_p_type = ir.PointerType(ir.IntType(8))
+        self.integer_types: dict[int, ir.IntType] = {
+            32: ir.IntType(32),
+            64: ir.IntType(64),
+        }
+        self.external_functions: dict[str, ir.Function] = {}
+
         self.struct_types: dict[IRStructType, ir.IdentifiedStructType] = {}
 
         self.builder = ir.IRBuilder()
         self.decl_values: dict[IRValueDecl, ir.Value] = {}
+
+    def load_external_functions(self):
+        self.external_functions["malloc"] = ir.Function(self.module, ir.FunctionType(self.void_p_type, [self.integer_types[64]]), "malloc")
+
+    def size_of(self, type: ir.Type) -> int:
+        return type.get_abi_size(self.target_data)
 
     def load_structs(self):
         for struct in self.program.structs:
@@ -42,7 +62,14 @@ class LLVMGen:
         constructor = self.decl_values[struct.constructor] = ir.Function(self.module, constructor_type, f"{struct.name}_constructor")
 
         self.builder = ir.IRBuilder(constructor.append_basic_block("entry"))
-        obj = self.builder.alloca(struct_type.pointee)
+
+        mem = self.builder.call(self.external_functions["malloc"], [ir.Constant(ir.IntType(64), self.size_of(struct_type.pointee))])
+        obj = self.builder.bitcast(mem, struct_type)
+
+        for index, arg in enumerate(constructor.args):
+            field_ptr = self.builder.gep(obj, [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), index)])
+            self.builder.store(arg, field_ptr)
+
         self.builder.ret(obj)
 
     def generate_functions(self):

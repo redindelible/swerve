@@ -13,10 +13,6 @@ LINKER_PATH = WINDOWS_PATH / "lld-link.exe"
 
 
 def emit_module(module: ir.Module, output: Path):
-    llvm.initialize()
-    llvm.initialize_native_target()
-    llvm.initialize_native_asmprinter()
-
     target = llvm.Target.from_default_triple()
     machine = target.create_target_machine(codemodel="default")
     module.triple = target.triple
