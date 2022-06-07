@@ -3,6 +3,7 @@ from __future__ import annotations
 from common import BuiltinLocation, CompilerMessage, ErrorType, Location, Path
 from llvmlite import ir
 from llvmlite import binding as llvm
+
 import subprocess
 import tempfile
 
@@ -29,11 +30,10 @@ def emit_module(module: ir.Module, output: Path):
         raise CompilerMessage(ErrorType.COMPILATION, "Could not locate Windows SDKs")
     um_path, ucrt_path = sdk_paths
 
-    object_file = tempfile.NamedTemporaryFile(delete=True)
+    object_file = tempfile.NamedTemporaryFile(delete=False)
     object_file.write(object_code)
 
     result = subprocess.Popen([LINKER_PATH, object_file.name, f"/libpath:{lib_path}", f"/libpath:{um_path}", f"/libpath:{ucrt_path}", "/DEFAULTLIB:libcmt.lib", f"/out:{output}"], shell=False)
-    result.kill()
 
 
 def find_vs_lib_path(platform: str) -> Path | None:

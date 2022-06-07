@@ -153,9 +153,12 @@ class ResolveNames:
         struct_ns = self.push(Namespace())
         for method in struct.methods:
             decl = self.curr_ns.declare_value(method.name, IRValueDecl(IRUnresolvedUnknownType(), method.location))
-            # self.value_decls[method] = decl
         self.pop()
         self.struct_type_decls[struct] = type_decl
+
+        # constructor
+        decl = self.curr_ns.declare_value(struct.name, IRValueDecl(IRUnresolvedUnknownType(), struct.location))
+        self.value_decls[struct] = decl
 
     def resolve_imports(self):
         file_paths: dict[Path, ASTFile] = {file.path.resolve(): file for file in self.program.files}
@@ -261,7 +264,7 @@ class ResolveNames:
             # program.functions.append(IRFunction(self.value_decls[method], method.name, params, ret_type, body))
         self.pop()
 
-        type = IRGenericStruct(struct_type_decl, struct.name, type_vars, supertraits, fields, [], [])
+        type = IRGenericStruct(struct_type_decl, self.value_decls[struct], struct.name, type_vars, supertraits, fields, [], [])
         struct_type_decl.type = type
 
         program.generic_structs.append(type)

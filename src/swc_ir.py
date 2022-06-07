@@ -139,17 +139,20 @@ class IRProgram:
 
 
 class IRStruct:
-    def __init__(self, type_decl: IRTypeDecl, name: str, supertraits: list[IRType], fields: dict[str, IRType], methods: list[IRMethod]):
+    def __init__(self, type_decl: IRTypeDecl, constructor: IRValueDecl, name: str, supertraits: list[IRType], fields: dict[str, IRType], methods: list[IRMethod]):
         self.type_decl = type_decl
+        self.constructor = constructor
         self.name = name
         self.supertraits = supertraits
+        self.methods = methods
         self.fields = fields
 
 
 class IRGenericStruct:
-    def __init__(self, type_decl: IRTypeDecl, name: str, type_vars: list[IRTypeVariable], supertraits: list[IRType],
+    def __init__(self, type_decl: IRTypeDecl, constructor: IRValueDecl, name: str, type_vars: list[IRTypeVariable], supertraits: list[IRType],
                  fields: dict[str, IRType], methods: list[IRMethod], generic_methods: list[IRGenericMethod]):
         self.type_decl = type_decl
+        self.constructor = constructor
         self.name = name
         self.type_vars = type_vars
         self.supertraits = supertraits
@@ -294,6 +297,8 @@ class IRAttrExpr(IRExpr):
         super().__init__()
         self.object = object
         self.attr = attr
+
+        self.index: int | None = None
 
 
 class IRIntegerExpr(IRExpr):
