@@ -1,11 +1,11 @@
 
 
-struct Holder {
-    number: int
+struct Holder[T] {
+    number: T
 }
 
 
 fn main() -> int {
-    let a: Holder = Holder(425);
+    let a: Holder[int] = Holder[int](425);
     return a.number;
 }

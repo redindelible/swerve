@@ -461,6 +461,18 @@ class ParseState:
                         break
                 end = self.expect(TokenType.RIGHT_PAREN)
                 left = ASTCallExpr(left, arguments, end, self.pop_loc())
+            elif self.match(TokenType.LEFT_BRACKET):
+                arguments: list[ASTType] = []
+                self.expect(TokenType.LEFT_BRACKET)
+                while not self.match(TokenType.RIGHT_BRACKET):
+                    argument = self.parse_type()
+                    arguments.append(argument)
+                    if self.match(TokenType.COMMA):
+                        self.expect(TokenType.COMMA)
+                    else:
+                        break
+                end = self.expect(TokenType.RIGHT_BRACKET)
+                left = ASTGenericExpr(left, arguments, self.pop_loc())
             elif self.match(TokenType.DOT):
                 self.expect(TokenType.DOT)
                 attr = self.expect(TokenType.IDENT)
@@ -486,7 +498,26 @@ class ParseState:
             return ASTIdentExpr(self.expect(TokenType.IDENT))
 
     def parse_type(self) -> ASTType:
+        return self.parse_type_precedence_1()
+
+    def parse_type_precedence_1(self) -> ASTType:
+        type = self.parse_type_precedence_2()
+        while self.match(TokenType.LEFT_BRACKET):
+            arguments: list[ASTType] = []
+            self.push_loc()
+            self.expect(TokenType.LEFT_BRACKET)
+            while not self.match(TokenType.RIGHT_BRACKET):
+                argument = self.parse_type()
+                arguments.append(argument)
+                if self.match(TokenType.COMMA):
+                    self.expect(TokenType.COMMA)
+                else:
+                    break
+            end = self.expect(TokenType.RIGHT_BRACKET)
+            type = ASTTypeGeneric(type, arguments, self.pop_loc())
+        return type
+
+    def parse_type_precedence_2(self) -> ASTType:
         self.push_loc()
         name = self.expect(TokenType.IDENT)
         return ASTTypeIdent(name.text, self.pop_loc())
-

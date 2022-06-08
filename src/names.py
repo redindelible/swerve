@@ -211,7 +211,7 @@ class ResolveNames:
             raise CompilerMessage(ErrorType.COMPILATION, f"Cyclic imports detected, one such shown below", waiting_imports[0][0].location)
 
     def resolve_names(self) -> IRProgram:
-        program = IRProgram([], [], [])
+        program = IRProgram([], [])
         self.push(self.program_namespace)
         for file in self.program.files:
             self.resolve_file(program, file)
@@ -237,8 +237,8 @@ class ResolveNames:
                 bound = None
             else:
                 bound = self.resolve_type(type_var.bound)
-            type_vars.append(IRTypeVariable(type_var.name, bound))
-            type_var_ns.declare_type(type_var.name, IRTypeDecl(bound, type_var.location))
+            type_decl = type_var_ns.declare_type(type_var.name, IRTypeDecl(IRUnresolvedUnknownType(), type_var.location))
+            type_vars.append(IRTypeVariable(type_var.name, bound, type_decl))
 
         supertraits = []
         for supertrait in struct.supertraits:
@@ -267,7 +267,7 @@ class ResolveNames:
         type = IRGenericStruct(struct_type_decl, self.value_decls[struct], struct.name, type_vars, supertraits, fields, [], [])
         struct_type_decl.type = type
 
-        program.generic_structs.append(type)
+        program.structs.append(type)
 
     def resolve_function(self, function: ASTFunction) -> IRFunction:
         ret_type = self.resolve_type(function.return_type)
@@ -315,6 +315,8 @@ class ResolveNames:
             return IRAttrExpr(self.resolve_expr(expr.object), expr.attr)
         elif isinstance(expr, ASTCallExpr):
             return IRCallExpr(self.resolve_expr(expr.callee), [self.resolve_expr(arg) for arg in expr.arguments])
+        elif isinstance(expr, ASTGenericExpr):
+            return IRGenericExpr(self.resolve_expr(expr.generic), [self.resolve_type(arg) for arg in expr.arguments])
         elif isinstance(expr, ASTIntegerExpr):
             return IRIntegerExpr(expr.number)
         elif isinstance(expr, ASTStringExpr):
@@ -344,5 +346,7 @@ class ResolveNames:
     def resolve_type(self, type: ASTType) -> IRType:
         if isinstance(type, ASTTypeIdent):
             return IRUnresolvedNameType(self.get_type(type.name, type.location))
+        elif isinstance(type, ASTTypeGeneric):
+            return IRUnresolvedGenericType(self.resolve_type(type.generic), [self.resolve_type(arg) for arg in type.type_arguments])
         else:
             raise ValueError()

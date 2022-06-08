@@ -11,7 +11,7 @@ __all__ = ["ASTFunction", "ASTParameter", "ASTStmt", "ASTLetStmt", "ASTVarStmt",
     "ASTReturnStmt", "ASTAssign", "ASTAddExpr", "ASTSubExpr", "ASTMulExpr", "ASTDivExpr", "ASTPowExpr", "ASTOrExpr", "ASTAndExpr",
     "ASTNegExpr", "ASTNotExpr", "ASTCallExpr", "ASTAttrExpr", "ASTIntegerExpr", "ASTStringExpr", "ASTGroupExpr", "ASTIdentExpr",
     "ASTType", "ASTTypeIdent", "ASTFile", "ASTNode", "ASTProgram", "ASTTopLevel", "ASTStruct", "ASTTypeVariable", "ASTMethod",
-    "ASTStructField", "ASTImport", "ASTBinaryExpr", "ASTForStmt", "ASTIfExpr", "ASTWhileStmt"]
+    "ASTStructField", "ASTImport", "ASTBinaryExpr", "ASTForStmt", "ASTIfExpr", "ASTWhileStmt", "ASTTypeGeneric", "ASTGenericExpr"]
 
 
 class Printer:
@@ -464,6 +464,16 @@ class ASTCallExpr(ASTExpr):
                     arg.pretty_print(printer)
 
 
+class ASTGenericExpr(ASTExpr):
+    def __init__(self, generic: ASTExpr, arguments: list[ASTType], loc: Location):
+        super().__init__(loc)
+        self.generic = generic
+        self.arguments = arguments
+
+    def pretty_print(self, printer: Printer):
+        raise NotImplementedError()
+
+
 class ASTAttrExpr(ASTExpr):
     def __init__(self, object: ASTExpr, attr: Token, location: Location):
         super().__init__(location)
@@ -526,6 +536,17 @@ class ASTIdentExpr(ASTExpr):
 class ASTType(ASTNode):
     def pretty_print(self, printer: Printer):
         raise NotImplementedError()
+
+
+class ASTTypeGeneric(ASTType):
+    def __init__(self, generic: ASTType, type_arguments: list[ASTType], loc: Location):
+        super().__init__(loc)
+        self.generic = generic
+        self.type_arguments = type_arguments
+
+    def pretty_print(self, printer: Printer):
+        #TODO
+        pass
 
 
 class ASTTypeIdent(ASTType):

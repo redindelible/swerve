@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Callable
 from common import Location
 
 
@@ -41,6 +42,12 @@ class IRUnresolvedNameType(IRUnresolvedType):
         self.decl = decl
 
 
+class IRUnresolvedGenericType(IRUnresolvedType):
+    def __init__(self, generic: IRType, type_args: list[IRType]):
+        self.generic = generic
+        self.type_args = type_args
+
+
 class IRResolvedType(IRType):
     def is_resolved(self) -> bool:
         return True
@@ -77,6 +84,23 @@ class IRFunctionType(IRResolvedType):
         return all(param_type.is_resolved() for param_type in self.param_types) and self.ret_type.is_resolved()
 
 
+class IRGenericFunctionType(IRFunctionType):
+    def __init__(self, type_vars: list[IRTypeVariable], param_types: list[IRResolvedType], ret_type: IRResolvedType,
+                 callback: Callable[[list[IRResolvedType]], tuple[IRFunctionType, IRExpr]]):
+        super().__init__(param_types, ret_type)
+        self.type_vars = type_vars
+
+        self.callback = callback
+
+    def is_subtype(self, bound: IRResolvedType) -> bool:
+        # TODO
+        # I don't want to think about this
+        return False
+
+    def is_concrete(self) -> bool:
+        return False
+
+
 class IRStructType(IRResolvedType):
     def __init__(self, struct: IRStruct):
         self.struct = struct
@@ -86,6 +110,17 @@ class IRStructType(IRResolvedType):
 
     def is_concrete(self) -> bool:
         return True
+
+
+class IRGenericStructType(IRResolvedType):
+    def __init__(self, generic: IRGenericStruct):
+        self.generic = generic
+
+    def is_subtype(self, bound: IRResolvedType) -> bool:
+        return self is bound
+
+    def is_concrete(self) -> bool:
+        return False
 
 
 class IRGenericType(IRResolvedType):
@@ -132,10 +167,9 @@ class IRTypeVarType(IRResolvedType):
 
 
 class IRProgram:
-    def __init__(self, functions: list[IRFunction], structs: list[IRStruct], generic_structs: list[IRGenericStruct]):
+    def __init__(self, functions: list[IRFunction], structs: list[IRStruct]):
         self.functions = functions
         self.structs = structs
-        self.generic_structs = generic_structs
 
 
 class IRStruct:
@@ -148,16 +182,13 @@ class IRStruct:
         self.fields = fields
 
 
-class IRGenericStruct:
+class IRGenericStruct(IRStruct):
     def __init__(self, type_decl: IRTypeDecl, constructor: IRValueDecl, name: str, type_vars: list[IRTypeVariable], supertraits: list[IRType],
                  fields: dict[str, IRType], methods: list[IRMethod], generic_methods: list[IRGenericMethod]):
-        self.type_decl = type_decl
-        self.constructor = constructor
-        self.name = name
+        super().__init__(type_decl, constructor, name, supertraits, fields, methods)
         self.type_vars = type_vars
-        self.supertraits = supertraits
-        self.methods = methods
-        self.fields = fields
+
+        self.reifications: dict[tuple[IRResolvedType], IRStruct] = {}
 
 
 class IRMethod:
@@ -176,9 +207,10 @@ class IRGenericMethod:
 
 
 class IRTypeVariable(IRNode):
-    def __init__(self, name: str, bound: IRType | None):
+    def __init__(self, name: str, bound: IRType | None, type_decl: IRTypeDecl):
         self.name = name
         self.bound = bound
+        self.type_decl = type_decl
 
 
 class IRField(IRNode):
@@ -191,6 +223,18 @@ class IRFunction(IRNode):
     def __init__(self, decl: IRValueDecl, name: str, parameters: list[IRParameter], return_type: IRType, body: IRBlock):
         self.decl = decl
         self.name = name
+        self.parameters = parameters
+        self.return_type = return_type
+        self.body = body
+
+        self.function_type: IRFunctionType | None = None
+
+
+class IRGenericFunction(IRNode):
+    def __init__(self, decl: IRValueDecl, name: str, type_vars: list[IRTypeVariable], parameters: list[IRParameter], return_type: IRType, body: IRBlock):
+        self.decl = decl
+        self.name = name
+        self.type_vars = type_vars
         self.parameters = parameters
         self.return_type = return_type
         self.body = body
@@ -290,6 +334,15 @@ class IRCallExpr(IRExpr):
         super().__init__()
         self.callee = callee
         self.arguments = arguments
+
+
+class IRGenericExpr(IRExpr):
+    def __init__(self, generic: IRExpr, arguments: list[IRType]):
+        super().__init__()
+        self.generic = generic
+        self.arguments = arguments
+
+        self.replacement_expr: IRExpr | None = None
 
 
 class IRAttrExpr(IRExpr):

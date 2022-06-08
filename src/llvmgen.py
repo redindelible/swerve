@@ -50,12 +50,13 @@ class LLVMGen:
             self.struct_types[struct.type_decl.type] = ir.PointerType(struct_type)
 
         for struct in self.program.structs:
-            # noinspection PyTypeChecker
-            struct_p_type: ir.PointerType = self.struct_types[struct.type_decl.type]
-            struct_type: ir.IdentifiedStructType = struct_p_type.pointee
-            struct_type.set_body(*(self.generate_type(field) for field in struct.fields.values()))
+            if not isinstance(struct, IRGenericStruct):
+                # noinspection PyTypeChecker
+                struct_p_type: ir.PointerType = self.struct_types[struct.type_decl.type]
+                struct_type: ir.IdentifiedStructType = struct_p_type.pointee
+                struct_type.set_body(*(self.generate_type(field) for field in struct.fields.values()))
 
-            self.generate_constructor(struct, struct_p_type)
+                self.generate_constructor(struct, struct_p_type)
 
     def generate_constructor(self, struct: IRStruct, struct_type: ir.PointerType):
         constructor_type = ir.FunctionType(struct_type, [self.generate_type(field) for field in struct.fields.values()])
@@ -81,7 +82,8 @@ class LLVMGen:
         func_type = ir.FunctionType(self.generate_type(ir_func_type.ret_type), [self.generate_type(param_type) for param_type in ir_func_type.param_types])
         func = ir.Function(self.module, func_type, function.name)   # TODO mangling
 
-        self.builder = ir.IRBuilder(func.append_basic_block("entry"))
+        entry_block = func.append_basic_block("entry")
+        self.builder = ir.IRBuilder(entry_block)
         for stmt in function.body.body:
             self.generate_stmt(stmt)
 
@@ -111,6 +113,8 @@ class LLVMGen:
             return self.generate_call_expr(expr)
         elif isinstance(expr, IRAttrExpr):
             return self.generate_attr_expr(expr)
+        elif isinstance(expr, IRGenericExpr):
+            return self.generate_generic_expr(expr)
         else:
             raise ValueError(type(expr))
 
@@ -131,6 +135,9 @@ class LLVMGen:
         object = self.generate_expr(expr.object)
         element_pointer = self.builder.gep(object, (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), expr.index),))
         return self.builder.load(element_pointer)
+
+    def generate_generic_expr(self, expr: IRGenericExpr) -> ir.Value:
+        return self.generate_expr(expr.replacement_expr)
 
     def generate_type(self, type: IRType) -> ir.Type:
         if not isinstance(type, IRResolvedType):
