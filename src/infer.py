@@ -162,6 +162,8 @@ class BidirectionalTypeInference:
             return self.unify_generic_expr(expr, bound)
         elif isinstance(expr, IRAttrExpr):
             return self.unify_attr_expr(expr, bound)
+        elif isinstance(expr, IRBinaryExpr):
+            return self.unify_binary_expr(expr, bound)
         else:
             raise ValueError(type(expr))
 
@@ -188,7 +190,8 @@ class BidirectionalTypeInference:
             raise CompilerMessage(ErrorType.COMPILATION, f"Mismatched argument counts (expected {len(resolved_callee.param_types)}, got {len(expr.arguments)})")
         for param, argument in zip(resolved_callee.param_types, expr.arguments):
             self.unify_expr(argument, param)
-        return self.unify_type(resolved_callee.ret_type, bound)[0]
+        expr.yield_type, _ = self.unify_type(resolved_callee.ret_type, bound)
+        return expr.yield_type
 
     def unify_generic_expr(self, expr: IRGenericExpr, bound: IRResolvedType | None) -> IRResolvedType:
         resolved_generic = self.unify_expr(expr.generic, None)
@@ -198,9 +201,9 @@ class BidirectionalTypeInference:
         if len(resolved_generic.type_vars) != len(expr.arguments):
             raise CompilerMessage(ErrorType.COMPILATION, f"Mismatched type argument counts (expected {len(resolved_generic.type_vars)}, got {len(expr.arguments)})")
 
-        reified_generic, replacement_name = resolved_generic.callback([self.resolve_type(type) for type in expr.arguments])
+        expr.yield_type, replacement_name = resolved_generic.callback([self.resolve_type(type) for type in expr.arguments])
         expr.replacement_expr = replacement_name
-        return reified_generic
+        return expr.yield_type
 
     def unify_attr_expr(self, expr: IRAttrExpr, bound: IRResolvedType | None) -> IRResolvedType:
         resolved_object = self.unify_expr(expr.object, None)
@@ -210,7 +213,21 @@ class BidirectionalTypeInference:
             raise CompilerMessage(ErrorType.COMPILATION, f"Object of type {resolved_object.struct} does not have a field named {expr.attr}")
         expr.index = list(resolved_object.struct.fields.keys()).index(expr.attr)
         # noinspection PyTypeChecker
-        return self.unify_type(resolved_object.struct.fields[expr.attr], bound)[0]
+        expr.yield_type, _ = self.unify_type(resolved_object.struct.fields[expr.attr], bound)
+        return expr.yield_type
+
+    def unify_binary_expr(self, expr: IRBinaryExpr, bound: IRResolvedType | None) -> IRResolvedType:
+        match expr.op:
+            case "Add":
+                left_type = self.unify_expr(expr.left, None)
+                right_type = self.unify_expr(expr.right, None)
+                if isinstance(left_type, IRIntegerType) and isinstance(right_type, IRIntegerType):
+                    expr.yield_type, _ = self.unify_type(IRIntegerType(max(left_type.bits, right_type.bits)), bound)
+                    return expr.yield_type
+                else:
+                    raise CompilerMessage(ErrorType.COMPILATION, "Mismatched arguments to addition")
+            case _:
+                raise ValueError()
 
     def unify_type(self, yield_type: IRResolvedType | None, bound_type: IRResolvedType | None) -> tuple[IRResolvedType, IRResolvedType]:
         if yield_type is None and bound_type is None:

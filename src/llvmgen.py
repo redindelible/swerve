@@ -115,6 +115,8 @@ class LLVMGen:
             return self.generate_attr_expr(expr)
         elif isinstance(expr, IRGenericExpr):
             return self.generate_generic_expr(expr)
+        elif isinstance(expr, IRBinaryExpr):
+            return self.generate_binary_expr(expr)
         else:
             raise ValueError(type(expr))
 
@@ -138,6 +140,13 @@ class LLVMGen:
 
     def generate_generic_expr(self, expr: IRGenericExpr) -> ir.Value:
         return self.generate_expr(expr.replacement_expr)
+
+    def generate_binary_expr(self, expr: IRBinaryExpr) -> ir.Value:
+        match expr.op:
+            case "Add":
+                return self.builder.add(self.generate_expr(expr.left), self.generate_expr(expr.right))
+            case _:
+                raise ValueError()
 
     def generate_type(self, type: IRType) -> ir.Type:
         if not isinstance(type, IRResolvedType):
