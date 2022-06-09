@@ -1,3 +1,4 @@
+import "std/std.sw"::putc
 
 
 struct Holder[T, K] {
@@ -17,6 +18,5 @@ fn fibo(n: int) -> int {
 
 fn main() -> int {
     let a: Holder[int, int] = Holder[int, int](22, 32);
-    a.number = a;
     return a.number;
 }

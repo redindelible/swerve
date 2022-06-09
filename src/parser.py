@@ -80,12 +80,15 @@ class ParseState:
             return self.advance()
         else:
             self._tried_match.append(type)
-            if len(self._tried_match) == 1:
-                raise CompilerMessage(ErrorType.PARSE, f"Expected {self._tried_match[0].value}, but got {self.curr.type.value} instead", self.curr.location)
-            elif len(self._tried_match) == 2:
-                raise CompilerMessage(ErrorType.PARSE, f"Expected {self._tried_match[0].value} or {self._tried_match[1].value}, but got {self.curr.type.value} instead", self.curr.location)
-            else:
-                raise CompilerMessage(ErrorType.PARSE, f"Expected any of {', '.join(tried.value for tried in self._tried_match[:-1])}, or {self._tried_match[-1].value}, but got {self.curr.type.value} instead", self.curr.location)
+            self.error()
+
+    def error(self):
+        if len(self._tried_match) == 1:
+            raise CompilerMessage(ErrorType.PARSE, f"Expected {self._tried_match[0].value}, but got {self.curr.type.value} instead", self.curr.location)
+        elif len(self._tried_match) == 2:
+            raise CompilerMessage(ErrorType.PARSE, f"Expected {self._tried_match[0].value} or {self._tried_match[1].value}, but got {self.curr.type.value} instead", self.curr.location)
+        else:
+            raise CompilerMessage(ErrorType.PARSE, f"Expected any of {', '.join(tried.value for tried in self._tried_match[:-1])}, or {self._tried_match[-1].value}, but got {self.curr.type.value} instead", self.curr.location)
 
     def push_loc(self):
         self._start_location.append(self._curr_token.location)
@@ -548,6 +551,29 @@ class ParseState:
         return type
 
     def parse_type_precedence_2(self) -> ASTType:
-        self.push_loc()
-        name = self.expect(TokenType.IDENT)
-        return ASTTypeIdent(name.text, self.pop_loc())
+        if self.match(TokenType.IDENT):
+            self.push_loc()
+            name = self.expect(TokenType.IDENT)
+            return ASTTypeIdent(name.text, self.pop_loc())
+        elif self.match(TokenType.LEFT_PAREN):
+            self.push_loc()
+            parameters: list[ASTType] = []
+            self.expect(TokenType.LEFT_PAREN)
+            while not self.match(TokenType.RIGHT_PAREN):
+                parameter = self.parse_type()
+                parameters.append(parameter)
+                if self.match(TokenType.COMMA):
+                    self.expect(TokenType.COMMA)
+                else:
+                    break
+            self.expect(TokenType.RIGHT_PAREN)
+
+            if self.match(TokenType.ARROW):
+                self.expect(TokenType.ARROW)
+                ret_type = self.parse_type()
+                return ASTTypeFunction(parameters, ret_type, self.pop_loc())
+            elif len(parameters) == 0:
+                return ASTTypeUnit(self.pop_loc())
+            else:
+                self.expect(TokenType.ARROW)
+                self.error()

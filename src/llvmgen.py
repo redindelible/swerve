@@ -83,7 +83,7 @@ class LLVMGen:
 
     def generate_function(self, function: IRFunction):
         ir_func_type = function.function_type
-        func_type = ir.FunctionType(self.generate_type(ir_func_type.ret_type), [self.generate_type(param_type) for param_type, _ in ir_func_type.param_types])
+        func_type = ir.FunctionType(self.generate_type(ir_func_type.ret_type), [self.generate_type(param_type.type) for param_type in ir_func_type.param_types])
         func = ir.Function(self.module, func_type, function.name)   # TODO mangling
 
         self.decl_values[function.decl] = func
@@ -96,7 +96,10 @@ class LLVMGen:
             self.generate_stmt(stmt)
 
         if self.builder.block.terminator is None:
-            self.builder.unreachable()
+            if function.body.always_returns():
+                self.builder.unreachable()
+            else:
+                self.builder.ret(self.unit)
         self.builder = ir.IRBuilder()
 
     def generate_stmt(self, stmt: IRStmt):

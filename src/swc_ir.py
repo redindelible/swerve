@@ -66,6 +66,16 @@ class IRUnresolvedNameType(IRUnresolvedType):
         return "an unresolved name type"
 
 
+class IRUnresolvedFunctionType(IRUnresolvedType):
+    def __init__(self, parameters: list[IRType], ret_type: IRType):
+        super().__init__()
+        self.parameters = parameters
+        self.ret_type = ret_type
+
+    def __str__(self):
+        return f"({', '.join(str(param) for param in self.parameters)}) -> {self.ret_type}"
+
+
 class IRUnresolvedGenericType(IRUnresolvedType):
     def __init__(self, generic: IRType, type_args: list[IRType]):
         super().__init__()
@@ -109,8 +119,8 @@ class IRFunctionType(IRResolvedType):
         if len(bound.param_types) != len(self.param_types):
             return False
 
-        for (this_type, _), (bound_type, _) in zip(self.param_types, bound.param_types):
-            if not bound_type.is_subtype(this_type):   # parameters are contravariant
+        for this_type, bound_type in zip(self.param_types, bound.param_types):
+            if not bound_type.type.is_subtype(this_type.type):   # parameters are contravariant
                 return False
 
         if not self.ret_type.is_subtype(bound.ret_type):
@@ -119,10 +129,10 @@ class IRFunctionType(IRResolvedType):
         return True
 
     def is_concrete(self) -> bool:
-        return all(param_type.is_resolved() for param_type, _ in self.param_types) and self.ret_type.is_resolved()
+        return all(param_type.type.is_resolved() for param_type in self.param_types) and self.ret_type.is_resolved()
 
     def __str__(self):
-        return f"({', '.join(str(param) for param in self.param_types)}) -> {self.ret_type}"
+        return f"({', '.join(str(param.type) for param in self.param_types)}) -> {self.ret_type}"
 
     def __eq__(self, other: IRFunctionType):
         return type(other) == IRFunctionType and self.param_types == other.param_types and self.ret_type == other.ret_type

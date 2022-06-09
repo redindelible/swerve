@@ -112,6 +112,10 @@ class BidirectionalTypeInference:
 
         function.function_type = function.decl.type = IRFunctionType(param_types, resolved).set_loc(function.loc)
 
+        if not function.body.always_returns():
+            if function.return_type != IRUnitType():
+                raise CompilerMessage(ErrorType.COMPILATION, f"Cannot prove that function always has a return value:", function.loc)
+
     def infer_function_body(self, function: IRFunction):
         self.expected_return_type = function.return_type
         self.expected_return_loc = function.return_type
@@ -192,8 +196,8 @@ class BidirectionalTypeInference:
             raise CompilerMessage(ErrorType.COMPILATION, f"Mismatched argument counts (expected {len(resolved_callee.param_types)}, got {len(expr.arguments)}):", expr.loc, [
                 CompilerMessage(ErrorType.NOTE, f"Function declared here:", resolved_callee.loc)
             ])
-        for (param, param_loc), argument in zip(resolved_callee.param_types, expr.arguments):
-            self.unify_expr(argument, param, param_loc)
+        for param, argument in zip(resolved_callee.param_types, expr.arguments):
+            self.unify_expr(argument, param.type, param.loc)
         expr.yield_type, _ = self.unify_type(resolved_callee.ret_type, bound, expr.loc, bound_loc)
         return expr.yield_type
 

@@ -280,8 +280,6 @@ class ResolveNames:
             params.append(IRParameter(param_decl, param.name, self.resolve_type(param.type)))
 
         body = self.resolve_body(function.body, self.pop())
-        if not body.always_returns():
-            raise CompilerMessage(ErrorType.COMPILATION, f"Cannot prove that function always has a return value:", function.loc)
         return IRFunction(self.value_decls[function], function.name, params, ret_type, body)
 
     def resolve_stmt(self, stmt: ASTStmt) -> IRStmt:
@@ -355,5 +353,9 @@ class ResolveNames:
             return IRUnresolvedNameType(self.get_type(type.name, type.loc)).set_loc(type.loc)
         elif isinstance(type, ASTTypeGeneric):
             return IRUnresolvedGenericType(self.resolve_type(type.generic), [self.resolve_type(arg) for arg in type.type_arguments]).set_loc(type.loc)
+        elif isinstance(type, ASTTypeUnit):
+            return IRUnitType().set_loc(type.loc)
+        elif isinstance(type, ASTTypeFunction):
+            return IRUnresolvedFunctionType([self.resolve_type(param) for param in type.parameters], self.resolve_type(type.ret_type)).set_loc(type.loc)
         else:
             raise ValueError()

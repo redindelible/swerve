@@ -12,7 +12,7 @@ __all__ = ["ASTFunction", "ASTParameter", "ASTStmt", "ASTLetStmt", "ASTVarStmt",
     "ASTNegExpr", "ASTNotExpr", "ASTCallExpr", "ASTAttrExpr", "ASTIntegerExpr", "ASTStringExpr", "ASTGroupExpr", "ASTIdentExpr",
     "ASTType", "ASTTypeIdent", "ASTFile", "ASTNode", "ASTProgram", "ASTTopLevel", "ASTStruct", "ASTTypeVariable", "ASTMethod",
     "ASTStructField", "ASTImport", "ASTBinaryExpr", "ASTForStmt", "ASTIfExpr", "ASTWhileStmt", "ASTTypeGeneric", "ASTGenericExpr",
-    "ASTLessExpr", "ASTLessEqualExpr", "ASTGreaterExpr", "ASTGreaterEqualExpr", "ASTAttrAssign"]
+    "ASTLessExpr", "ASTLessEqualExpr", "ASTGreaterExpr", "ASTGreaterEqualExpr", "ASTAttrAssign", "ASTTypeUnit", "ASTTypeFunction"]
 
 
 class Printer:
@@ -598,3 +598,21 @@ class ASTTypeIdent(ASTType):
 
     def pretty_print(self, printer: Printer):
         printer.print(f"Type Ident={self.name!r}")
+
+
+class ASTTypeFunction(ASTType):
+    def __init__(self, parameters: list[ASTType], ret_type: ASTType, loc: Location):
+        super().__init__(loc)
+        self.parameters = parameters
+        self.ret_type = ret_type
+
+    def pretty_print(self, printer: Printer):
+        raise NotImplementedError()
+
+
+class ASTTypeUnit(ASTType):
+    def __init__(self, loc: Location):
+        super().__init__(loc)
+
+    def pretty_print(self, printer: Printer):
+        raise NotImplementedError()

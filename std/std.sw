@@ -1,3 +1,3 @@
-def io() -> int {}
+fn putc(c: int) -> () {
 
-def path() -> int {}
+}
