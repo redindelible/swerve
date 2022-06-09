@@ -356,67 +356,67 @@ class ParseState:
         return ASTBlockExpr(stmts, self.pop_loc())
 
     def parse_precedence_2(self) -> ASTExpr:
-        self.push_loc()
         left = self.parse_precedence_3()
         if self.match(TokenType.EQUAL):
+            self.push_loc()
             if isinstance(left, ASTIdentExpr):
                 self.expect(TokenType.EQUAL)
                 right = self.parse_precedence_2()
-                return ASTAssign(left, right, self.pop_loc())
+                return ASTAssign(left, right, self.pop_loc().combine(left.loc))
             else:
                 raise CompilerMessage(ErrorType.PARSE, "Can only assign to identifiers", left.loc)
         else:
             return left
 
     def parse_precedence_3(self) -> ASTExpr:
-        self.push_loc()
         left = self.parse_precedence_4()
         while self.match(TokenType.OR):
+            self.push_loc()
             self.expect(TokenType.OR)
             right = self.parse_precedence_4()
-            left = ASTOrExpr(left, right, self.pop_loc())
+            left = ASTOrExpr(left, right, self.pop_loc().combine(left.loc))
         return left
 
     def parse_precedence_4(self) -> ASTExpr:
-        self.push_loc()
         left = self.parse_precedence_5()
         while self.match(TokenType.AND):
+            self.push_loc()
             self.expect(TokenType.AND)
             right = self.parse_precedence_5()
-            left = ASTAndExpr(left, right, self.pop_loc())
+            left = ASTAndExpr(left, right, self.pop_loc().combine(left.loc))
         return left
 
     def parse_precedence_5(self) -> ASTExpr:
-        self.push_loc()
         left = self.parse_precedence_6()
         while True:
             if self.match(TokenType.PLUS):
+                self.push_loc()
                 self.expect(TokenType.PLUS)
                 right = self.parse_precedence_6()
-                left = ASTAddExpr(left, right, self.pop_loc())
+                left = ASTAddExpr(left, right, self.pop_loc().combine(left.loc))
             elif self.match(TokenType.MINUS):
+                self.push_loc()
                 self.expect(TokenType.MINUS)
                 right = self.parse_precedence_6()
-                left = ASTSubExpr(left, right, self.pop_loc())
+                left = ASTSubExpr(left, right, self.pop_loc().combine(left.loc))
             else:
-                self.pop_loc()
                 break
         return left
 
     def parse_precedence_6(self) -> ASTExpr:
-        self.push_loc()
         left = self.parse_precedence_7()
         while True:
             if self.match(TokenType.STAR):
+                self.push_loc()
                 self.expect(TokenType.STAR)
                 right = self.parse_precedence_7()
-                left = ASTMulExpr(left, right, self.pop_loc())
+                left = ASTMulExpr(left, right, self.pop_loc().combine(left.loc))
             elif self.match(TokenType.SLASH):
+                self.push_loc()
                 self.expect(TokenType.SLASH)
                 right = self.parse_precedence_7()
-                left = ASTDivExpr(left, right, self.pop_loc())
+                left = ASTDivExpr(left, right, self.pop_loc().combine(left.loc))
             else:
-                self.pop_loc()
                 break
         return left
 

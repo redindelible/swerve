@@ -6,7 +6,12 @@ struct Holder[T, K] {
 }
 
 
+fn fibo(n: int) -> int {
+    return n;
+}
+
+
 fn main() -> int {
     let a: Holder[int, int] = Holder[int, int](425, 32);
-    return a.number + a.other_number;
+    return fibo(a.number) + a.other_number;
 }

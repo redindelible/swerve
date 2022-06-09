@@ -81,6 +81,10 @@ class LLVMGen:
         func_type = ir.FunctionType(self.generate_type(ir_func_type.ret_type), [self.generate_type(param_type) for param_type, _ in ir_func_type.param_types])
         func = ir.Function(self.module, func_type, function.name)   # TODO mangling
 
+        self.decl_values[function.decl] = func
+        for ir_arg, llvm_arg in zip(function.parameters, func.args):
+            self.decl_values[ir_arg.decl] = llvm_arg
+
         entry_block = func.append_basic_block("entry")
         self.builder = ir.IRBuilder(entry_block)
         for stmt in function.body.body:
