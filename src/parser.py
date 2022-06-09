@@ -434,15 +434,16 @@ class ParseState:
         return left
 
     def parse_precedence_7(self) -> ASTExpr:
-        self.push_loc()
-        left = self.parse_precedence_8()
-        if self.match(TokenType.STAR_STAR):
-            self.expect(TokenType.STAR_STAR)
-            right = self.parse_precedence_7()
-            return ASTPowExpr(left, right, self.pop_loc())
-        else:
-            self.pop_loc()
-            return left
+        # self.push_loc()
+        # left = self.parse_precedence_8()
+        # if self.match(TokenType.STAR_STAR):
+        #     self.expect(TokenType.STAR_STAR)
+        #     right = self.parse_precedence_7()
+        #     return ASTPowExpr(left, right, self.pop_loc())
+        # else:
+        #     self.pop_loc()
+        #     return left
+        return self.parse_precedence_8()
 
     def parse_precedence_8(self) -> ASTExpr:
         self.push_loc()

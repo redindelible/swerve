@@ -231,6 +231,50 @@ class BidirectionalTypeInference:
                     return expr.yield_type
                 else:
                     raise CompilerMessage(ErrorType.COMPILATION, f"Mismatched arguments to addition (left is {left_type}, right is {right_type}):", expr.loc)
+            case "Sub":
+                left_type = self.unify_expr(expr.left, None, None)
+                right_type = self.unify_expr(expr.right, None, None)
+                if isinstance(left_type, IRIntegerType) and isinstance(right_type, IRIntegerType):
+                    expr.yield_type, _ = self.unify_type(IRIntegerType(max(left_type.bits, right_type.bits)), bound,
+                                                         expr.loc, bound_loc)
+                    return expr.yield_type
+                else:
+                    raise CompilerMessage(ErrorType.COMPILATION,
+                                          f"Mismatched arguments to subtraction (left is {left_type}, right is {right_type}):",
+                                          expr.loc)
+            case "Mul":
+                left_type = self.unify_expr(expr.left, None, None)
+                right_type = self.unify_expr(expr.right, None, None)
+                if isinstance(left_type, IRIntegerType) and isinstance(right_type, IRIntegerType):
+                    expr.yield_type, _ = self.unify_type(IRIntegerType(max(left_type.bits, right_type.bits)), bound,
+                                                         expr.loc, bound_loc)
+                    return expr.yield_type
+                else:
+                    raise CompilerMessage(ErrorType.COMPILATION,
+                                          f"Mismatched arguments to multiplication (left is {left_type}, right is {right_type}):",
+                                          expr.loc)
+            case "Div":
+                left_type = self.unify_expr(expr.left, None, None)
+                right_type = self.unify_expr(expr.right, None, None)
+                if isinstance(left_type, IRIntegerType) and isinstance(right_type, IRIntegerType):
+                    expr.yield_type, _ = self.unify_type(IRIntegerType(max(left_type.bits, right_type.bits)), bound,
+                                                         expr.loc, bound_loc)
+                    return expr.yield_type
+                else:
+                    raise CompilerMessage(ErrorType.COMPILATION,
+                                          f"Mismatched arguments to division (left is {left_type}, right is {right_type}):",
+                                          expr.loc)
+            # case "Pow":
+            #     left_type = self.unify_expr(expr.left, None, None)
+            #     right_type = self.unify_expr(expr.right, None, None)
+            #     if isinstance(left_type, IRIntegerType) and isinstance(right_type, IRIntegerType):
+            #         expr.yield_type, _ = self.unify_type(IRIntegerType(max(left_type.bits, right_type.bits)), bound,
+            #                                              expr.loc, bound_loc)
+            #         return expr.yield_type
+            #     else:
+            #         raise CompilerMessage(ErrorType.COMPILATION,
+            #                               f"Mismatched arguments to exponentiation (left is {left_type}, right is {right_type}):",
+            #                               expr.loc)
             case "Less":
                 left_type = self.unify_expr(expr.left, None, None)
                 right_type = self.unify_expr(expr.right, None, None)

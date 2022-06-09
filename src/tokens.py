@@ -13,13 +13,13 @@ class TokenType(Enum):
     PLUS = "`+`"
     MINUS = "`-`"
     STAR = "`*`"
-    STAR_STAR = "`**`"
+    # STAR_STAR = "`**`"
     SLASH = "`/`"
     SLASH_SLASH = "`//`"
     PLUS_EQUAL = "`+=`"
     MINUS_EQUAL = "`-=`"
     STAR_EQUAL = "`*=`"
-    STAR_STAR_EQUAL = "`**=`"
+    # STAR_STAR_EQUAL = "`**=`"
     SLASH_EQUAL = "`/=`"
     SLASH_SLASH_EQUAL = "`//=`"
     LESS = "`<`"
@@ -180,13 +180,13 @@ class TokenStream:
                 if self._curr == "=":
                     self._advance()
                     yield self._get_token(TokenType.STAR_EQUAL)
-                elif self._next == "*":
-                    self._advance()
-                    if self._curr == "=":
-                        self._advance()
-                        yield self._get_token(TokenType.STAR_STAR_EQUAL)
-                    else:
-                        yield self._get_token(TokenType.STAR_STAR)
+                # elif self._next == "*":
+                #     self._advance()
+                #     if self._curr == "=":
+                #         self._advance()
+                #         yield self._get_token(TokenType.STAR_STAR_EQUAL)
+                #     else:
+                #         yield self._get_token(TokenType.STAR_STAR)
                 else:
                     yield self._get_token(TokenType.STAR)
             elif self._curr == "/":

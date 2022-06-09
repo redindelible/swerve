@@ -161,6 +161,12 @@ class LLVMGen:
         match expr.op:
             case "Add":
                 return self.builder.add(self.generate_expr(expr.left), self.generate_expr(expr.right))
+            case "Sub":
+                return self.builder.sub(self.generate_expr(expr.left), self.generate_expr(expr.right))
+            case "Mul":
+                return self.builder.mul(self.generate_expr(expr.left), self.generate_expr(expr.right))
+            case "Div":
+                return self.builder.sdiv(self.generate_expr(expr.left), self.generate_expr(expr.right))
             case "Less":
                 return self.builder.icmp_signed("<", self.generate_expr(expr.left), self.generate_expr(expr.right))
             case _:
