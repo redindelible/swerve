@@ -386,5 +386,7 @@ class BidirectionalTypeInference:
                 resolved = self.resolve_generic(generic_type.generic, type_args, type.loc)
                 # noinspection PyTypeChecker
                 return resolved.type_decl.type
+            elif isinstance(type, IRUnresolvedFunctionType):
+                return IRFunctionType([IRParameterType(self.resolve_type(param), param.loc) for param in type.parameters], self.resolve_type(type.ret_type)).set_loc(type.loc)
             else:
                 raise ValueError(type)

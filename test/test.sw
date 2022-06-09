@@ -16,7 +16,12 @@ fn fibo(n: int) -> int {
 }
 
 
+fn call(func: (int) -> int, arg: int) -> int {
+    return func(arg);
+}
+
+
 fn main() -> int {
-    let a: Holder[int, int] = Holder[int, int](22, 32);
-    return a.number;
+    let a := Holder[int, int](22, 32);
+    return call(fibo, a.number);
 }

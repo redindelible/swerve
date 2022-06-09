@@ -234,5 +234,7 @@ class LLVMGen:
             return self.unit_type
         elif isinstance(type, IRBoolType):
             return self.bool_type
+        elif isinstance(type, IRFunctionType):
+            return ir.PointerType(ir.FunctionType(self.generate_type(type.ret_type), [self.generate_type(param.type) for param in type.param_types]))
         else:
             raise ValueError(type)
