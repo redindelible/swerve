@@ -522,6 +522,14 @@ class IRAttrAssign(IRExpr):
         self.index: int | None = None
 
 
+class IRLambda(IRExpr):
+    def __init__(self, parameters: list[IRParameter], ret_type: IRType, expr: IRExpr):
+        super().__init__()
+        self.parameters = parameters
+        self.ret_type = ret_type
+        self.expr = expr
+
+
 class IRBinaryExpr(IRExpr):
     def __init__(self, op: str, left: IRExpr, right: IRExpr):
         super().__init__()

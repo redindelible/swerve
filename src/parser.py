@@ -522,6 +522,31 @@ class ParseState:
             expr = self.parse_expr()
             self.expect(TokenType.RIGHT_PAREN)
             return ASTGroupExpr(expr, self.pop_loc())
+        elif self.match(TokenType.BAR):
+            self.push_loc()
+            parameters: list[ASTParameter] = []
+            self.expect(TokenType.BAR)
+            while not self.match(TokenType.BAR):
+                self.push_loc()
+                name = self.expect(TokenType.IDENT)
+                if self.match(TokenType.COLON):
+                    self.expect(TokenType.COLON)
+                    parameter = self.parse_type()
+                else:
+                    parameter = None
+                parameters.append(ASTParameter(name.text, parameter, self.pop_loc()))
+                if self.match(TokenType.COMMA):
+                    self.expect(TokenType.COMMA)
+                else:
+                    break
+            self.expect(TokenType.BAR)
+            if self.match(TokenType.ARROW):
+                self.expect(TokenType.ARROW)
+                ret_type = self.parse_type()
+            else:
+                ret_type = None
+            expr = self.parse_expr()
+            return ASTLambda(parameters, ret_type, expr, self.pop_loc())
         elif self.match(TokenType.BINARY) or self.match(TokenType.HEX) or self.match(TokenType.INTEGER):
             number = self.advance()
             return ASTIntegerExpr(number)

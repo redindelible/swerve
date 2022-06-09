@@ -334,6 +334,21 @@ class ResolveNames:
             return IRAssign(self.get_value(expr.name, expr.loc), expr.op, self.resolve_expr(expr.value)).set_loc(expr.loc)
         elif isinstance(expr, ASTAttrAssign):
             return IRAttrAssign(self.resolve_expr(expr.obj), expr.attr, expr.op, self.resolve_expr(expr.value)).set_loc(expr.loc)
+        elif isinstance(expr, ASTLambda):
+            if expr.ret_type is not None:
+                ret_type = self.resolve_type(expr.ret_type)
+            else:
+                ret_type = IRUnresolvedUnknownType()
+
+            expr_ns = self.push(Namespace())
+            params = []
+            for param in expr.parameters:
+                param_decl = self.curr_ns.declare_value(param.name, IRValueDecl(IRUnresolvedUnknownType(), param.loc))
+                params.append(IRParameter(param_decl, param.name, self.resolve_type(param.type) if param.type is not None else IRUnresolvedUnknownType()))
+
+            expr_expr = self.resolve_expr(expr.expr)
+            self.pop()
+            return IRLambda(params, ret_type, expr_expr).set_loc(expr.loc)
         else:
             raise ValueError()
 
@@ -358,4 +373,4 @@ class ResolveNames:
         elif isinstance(type, ASTTypeFunction):
             return IRUnresolvedFunctionType([self.resolve_type(param) for param in type.parameters], self.resolve_type(type.ret_type)).set_loc(type.loc)
         else:
-            raise ValueError()
+            raise ValueError(type)

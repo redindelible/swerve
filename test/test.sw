@@ -23,5 +23,5 @@ fn call(func: (int) -> int, arg: int) -> int {
 
 fn main() -> int {
     let a := Holder[int, int](22, 32);
-    return call(fibo, a.number);
+    return call(|n| n * 2, a.number);
 }

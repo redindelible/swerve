@@ -32,6 +32,7 @@ class TokenType(Enum):
     RIGHT_BRACE = "`}`"
     LEFT_BRACKET = "`[`"
     RIGHT_BRACKET = "`]`"
+    BAR = "`|`"
     DOT = "`.`"
     ARROW = "`->`"
     COLON = "`:`"
@@ -73,6 +74,7 @@ SIMPLE_TOKENS = {
     "}": TokenType.RIGHT_BRACE,
     "[": TokenType.LEFT_BRACKET,
     "]": TokenType.RIGHT_BRACKET,
+    "|": TokenType.BAR,
     ";": TokenType.SEMICOLON,
     ",": TokenType.COMMA,
     ".": TokenType.DOT,

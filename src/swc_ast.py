@@ -12,7 +12,8 @@ __all__ = ["ASTFunction", "ASTParameter", "ASTStmt", "ASTLetStmt", "ASTVarStmt",
     "ASTNegExpr", "ASTNotExpr", "ASTCallExpr", "ASTAttrExpr", "ASTIntegerExpr", "ASTStringExpr", "ASTGroupExpr", "ASTIdentExpr",
     "ASTType", "ASTTypeIdent", "ASTFile", "ASTNode", "ASTProgram", "ASTTopLevel", "ASTStruct", "ASTTypeVariable", "ASTMethod",
     "ASTStructField", "ASTImport", "ASTBinaryExpr", "ASTForStmt", "ASTIfExpr", "ASTWhileStmt", "ASTTypeGeneric", "ASTGenericExpr",
-    "ASTLessExpr", "ASTLessEqualExpr", "ASTGreaterExpr", "ASTGreaterEqualExpr", "ASTAttrAssign", "ASTTypeUnit", "ASTTypeFunction"]
+    "ASTLessExpr", "ASTLessEqualExpr", "ASTGreaterExpr", "ASTGreaterEqualExpr", "ASTAttrAssign", "ASTTypeUnit", "ASTTypeFunction",
+    "ASTLambda"]
 
 
 class Printer:
@@ -113,7 +114,7 @@ class ASTFunction(ASTTopLevel):
 
 
 class ASTParameter(ASTNode):
-    def __init__(self, name: str, type: ASTType, location: Location):
+    def __init__(self, name: str, type: ASTType | None, location: Location):
         super().__init__(location)
         self.name = name
         self.type = type
@@ -486,6 +487,17 @@ class ASTNotExpr(ASTExpr):
         printer.print("Neg:")
         with printer.indent():
             self.right.pretty_print(printer)
+
+
+class ASTLambda(ASTExpr):
+    def __init__(self, parameters: list[ASTParameter], ret_type: ASTType | None, expr: ASTExpr, loc: Location):
+        super().__init__(loc)
+        self.parameters = parameters
+        self.ret_type = ret_type
+        self.expr = expr
+
+    def pretty_print(self, printer: Printer):
+        raise NotImplementedError()
 
 
 class ASTCallExpr(ASTExpr):

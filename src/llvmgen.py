@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 from swc_ir import *
 from llvmlite import ir
 from llvmlite import binding as llvm
@@ -138,6 +140,8 @@ class LLVMGen:
             return self.generate_block_expr(expr)
         elif isinstance(expr, IRAttrAssign):
             return self.generate_attr_assign(expr)
+        elif isinstance(expr, IRLambda):
+            return self.generate_lambda(expr)
         else:
             raise ValueError(type(expr))
 
@@ -220,9 +224,28 @@ class LLVMGen:
         self.builder.store(value, element_pointer)
         return value
 
+    def generate_lambda(self, expr: IRLambda) -> ir.Value:
+        ir_func_type = cast(IRFunctionType, expr.yield_type)
+        func_type = ir.FunctionType(self.generate_type(ir_func_type.ret_type), [self.generate_type(param_type.type) for param_type in ir_func_type.param_types])
+        func = ir.Function(self.module, func_type, "lambda")  # TODO VERY TODO mangling
+
+        # self.decl_values[expr.decl] = func
+        for ir_arg, llvm_arg in zip(expr.parameters, func.args):
+            self.decl_values[ir_arg.decl] = llvm_arg
+
+        entry_block = func.append_basic_block("entry")
+        prev_builder, self.builder = self.builder, ir.IRBuilder(entry_block)
+
+        result = self.generate_expr(expr.expr)
+        if self.builder.block.terminator is None:
+            self.builder.ret(result)
+        self.builder = prev_builder
+
+        return func
+
     def generate_type(self, type: IRType) -> ir.Type:
         if not isinstance(type, IRResolvedType):
-            raise ValueError()
+            raise ValueError(type)
         if isinstance(type, IRIntegerType):
             if type.bits in self.integer_types:
                 return self.integer_types[type.bits]

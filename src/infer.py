@@ -170,6 +170,8 @@ class BidirectionalTypeInference:
             return self.unify_assign(expr, bound, bound_loc)
         elif isinstance(expr, IRAttrAssign):
             return self.unify_attr_assign(expr, bound, bound_loc)
+        elif isinstance(expr, IRLambda):
+            return self.unify_lambda(expr, bound, bound_loc)
         else:
             raise ValueError(type(expr))
 
@@ -346,6 +348,34 @@ class BidirectionalTypeInference:
         expr.yield_type = self.unify_expr(expr.value, bound, bound_loc)
 
         self.unify_type(expr.yield_type, cast(IRResolvedType, field.type), expr.value.loc, field.loc)
+        return expr.yield_type
+
+    def unify_lambda(self, expr: IRLambda, bound: IRResolvedType | None, bound_loc: Location | None) -> IRResolvedType:
+        if isinstance(bound, IRFunctionType):
+            if len(expr.parameters) != len(bound.param_types):
+                raise CompilerMessage(ErrorType.COMPILATION, f"Mismatched argument counts (expected {len(bound.param_types)}, got {len(expr.parameters)}):", expr.loc, [
+                    CompilerMessage(ErrorType.NOTE, f"Expectation is derived from here:", bound_loc)
+                ])
+            for param, expected_param in zip(expr.parameters, bound.param_types):
+                param.type, _ = self.unify_type(self.resolve_type(param.type), expected_param.type, param.loc, expected_param.loc)
+                param.decl.type = param.type
+            expr.ret_type, _ = self.unify_type(self.resolve_type(expr.ret_type), bound.ret_type, expr.loc, bound.loc)
+            self.unify_expr(expr.expr, expr.ret_type, bound.loc)
+
+            expr.yield_type = IRFunctionType([IRParameterType(param.type, param.loc) for param in expr.parameters], expr.ret_type)
+        else:
+            for param in expr.parameters:
+                param.type = self.resolve_type(param.type)
+                param.decl.type = param.type
+                if param.type is None:
+                    raise CompilerMessage(ErrorType.COMPILATION, f"Type of parameter could not be inferred", param.loc)
+            expr.ret_type = self.resolve_type(expr.ret_type)
+            if expr.ret_type is None:
+                raise CompilerMessage(ErrorType.COMPILATION, f"Type of return type could not be inferred", expr.loc)
+            self.unify_expr(expr.expr, expr.ret_type, expr.loc)
+
+            expr.yield_type = IRFunctionType([IRParameterType(param.type, param.loc) for param in expr.parameters], expr.ret_type)
+            self.unify_type(expr.yield_type, bound, expr.loc, bound_loc)
         return expr.yield_type
 
     def unify_type(self, yield_type: IRResolvedType | None, bound_type: IRResolvedType | None, yield_loc: Location, expected_loc: Location | None) -> tuple[IRResolvedType, IRResolvedType]:
