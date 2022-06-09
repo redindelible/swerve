@@ -212,6 +212,28 @@ class IRStringType(IRResolvedType):
         return "str"
 
 
+class IRBoolType(IRResolvedType):
+    def is_subtype(self, bound: IRResolvedType) -> bool:
+        return isinstance(bound, IRBoolType)
+
+    def is_concrete(self) -> bool:
+        return True
+
+    def __str__(self):
+        return "bool"
+
+
+class IRUnitType(IRResolvedType):
+    def is_subtype(self, bound: IRResolvedType) -> bool:
+        return isinstance(bound, IRUnitType)
+
+    def is_concrete(self) -> bool:
+        return True
+
+    def __str__(self):
+        return "unit"
+
+
 class IRTypeVarType(IRResolvedType):
     def __init__(self, type_var: IRTypeVariable):
         super().__init__()
@@ -317,13 +339,18 @@ class IRParameter(IRNode):
 
 
 class IRStmt(IRNode):
-    pass
+    # noinspection PyMethodMayBeStatic
+    def always_returns(self) -> bool:
+        return False
 
 
 class IRExprStmt(IRStmt):
     def __init__(self, expr: IRExpr):
         super().__init__()
         self.expr = expr
+
+    def always_returns(self) -> bool:
+        return self.expr.always_returns()
 
 
 class IRDeclStmt(IRStmt):
@@ -354,17 +381,29 @@ class IRReturnStmt(IRStmt):
         super().__init__()
         self.expr = expr
 
+    def always_returns(self) -> bool:
+        return True
+
 
 class IRExpr(IRNode):
     def __init__(self):
         super().__init__()
         self.yield_type: IRResolvedType | None = None
 
+    # noinspection PyMethodMayBeStatic
+    def always_returns(self) -> bool:
+        return False
+
 
 class IRBlock(IRExpr):
     def __init__(self, body: list[IRStmt]):
         super().__init__()
         self.body = body
+
+    def always_returns(self) -> bool:
+        if len(self.body) == 0:
+            return False
+        return self.body[-1].always_returns()
 
 
 class IRIf(IRExpr):
@@ -373,6 +412,11 @@ class IRIf(IRExpr):
         self.cond = cond
         self.then_do = then_do
         self.else_do = else_do
+
+    def always_returns(self) -> bool:
+        if self.else_do:
+            return self.then_do.always_returns() and self.else_do.always_returns()
+        return False
 
 
 class IRAssign(IRExpr):

@@ -29,6 +29,11 @@ class LLVMGen:
             32: ir.IntType(32),
             64: ir.IntType(64),
         }
+        self.bool_type = ir.IntType(1)
+        self.false = ir.Constant(self.bool_type, 0)
+        self.true = ir.Constant(self.bool_type, 1)
+        self.unit_type = ir.IntType(1)
+        self.unit = ir.Constant(self.unit_type, 0)
         self.external_functions: dict[str, ir.Function] = {}
 
         self.struct_types: dict[IRStructType, ir.IdentifiedStructType] = {}
@@ -90,6 +95,8 @@ class LLVMGen:
         for stmt in function.body.body:
             self.generate_stmt(stmt)
 
+        if self.builder.block.terminator is None:
+            self.builder.unreachable()
         self.builder = ir.IRBuilder()
 
     def generate_stmt(self, stmt: IRStmt):
@@ -97,6 +104,8 @@ class LLVMGen:
             self.generate_decl_stmt(stmt)
         elif isinstance(stmt, IRReturnStmt):
             self.generate_return_stmt(stmt)
+        elif isinstance(stmt, IRExprStmt):
+            self.generate_expr(stmt.expr)
         else:
             raise ValueError(type(stmt))
 
@@ -120,6 +129,10 @@ class LLVMGen:
             return self.generate_generic_expr(expr)
         elif isinstance(expr, IRBinaryExpr):
             return self.generate_binary_expr(expr)
+        elif isinstance(expr, IRIf):
+            return self.generate_if_expr(expr)
+        elif isinstance(expr, IRBlock):
+            return self.generate_block_expr(expr)
         else:
             raise ValueError(type(expr))
 
@@ -148,8 +161,46 @@ class LLVMGen:
         match expr.op:
             case "Add":
                 return self.builder.add(self.generate_expr(expr.left), self.generate_expr(expr.right))
+            case "Less":
+                return self.builder.icmp_signed("<", self.generate_expr(expr.left), self.generate_expr(expr.right))
             case _:
-                raise ValueError()
+                raise ValueError(expr.op)
+
+    def generate_if_expr(self, expr: IRIf) -> ir.Value:
+        cond = self.generate_expr(expr.cond)
+        if expr.else_do is None:
+            before_block = self.builder.block
+            with self.builder.if_then(cond) as then:
+                with then:
+                    then_block = self.builder.block
+                    then_result = self.generate_expr(expr.then_do)
+            result = self.builder.phi(self.generate_type(expr.yield_type))
+            result.add_incoming(then_result, then_block)
+            result.add_incoming(self.unit, before_block)
+        else:
+            with self.builder.if_else(cond) as (then, else_):
+                with then:
+                    then_block = self.builder.block
+                    then_result = self.generate_expr(expr.then_do)
+                with else_:
+                    else_block = self.builder.block
+                    else_result = self.generate_expr(expr.else_do)
+            result = self.builder.phi(self.generate_type(expr.yield_type))
+            result.add_incoming(then_result, then_block)
+            result.add_incoming(else_result, else_block)
+        return result
+
+    def generate_block_expr(self, expr: IRBlock) -> ir.Value:
+        last_result = None
+        for stmt in expr.body:
+            if isinstance(stmt, IRExprStmt):
+                last_result = self.generate_expr(stmt.expr)
+            else:
+                self.generate_stmt(stmt)
+        if last_result is None:
+            return self.unit
+        else:
+            return last_result
 
     def generate_type(self, type: IRType) -> ir.Type:
         if not isinstance(type, IRResolvedType):
@@ -161,5 +212,9 @@ class LLVMGen:
                 return self.integer_types.setdefault(type.bits, ir.IntType(type.bits))
         elif isinstance(type, IRStructType):
             return self.struct_types[type]
+        elif isinstance(type, IRUnitType):
+            return self.unit_type
+        elif isinstance(type, IRBoolType):
+            return self.bool_type
         else:
             raise ValueError(type)

@@ -22,6 +22,10 @@ class TokenType(Enum):
     STAR_STAR_EQUAL = "`**=`"
     SLASH_EQUAL = "`/=`"
     SLASH_SLASH_EQUAL = "`//=`"
+    LESS = "`<`"
+    LESS_EQUAL = "`<=`"
+    GREATER = "`>`"
+    GREATER_EQUAL = "`>=`"
     LEFT_PAREN = "`(`"
     RIGHT_PAREN = "`)`"
     LEFT_BRACE = "`{`"
@@ -34,6 +38,7 @@ class TokenType(Enum):
     COLON_COLON = "`::`"
     EQUAL = "`=`"
     EQUAL_EQUAL = "`==`"
+    NOT_EQUAL = "`!=`"
     SEMICOLON = "`;`"
     COMMA = "`,`"
     FN = "`fn`"
@@ -199,6 +204,22 @@ class TokenStream:
                         yield self._get_token(TokenType.SLASH_SLASH)
                 else:
                     yield self._get_token(TokenType.SLASH)
+            elif self._curr == "<":
+                self._new_token()
+                self._advance()
+                if self._curr == "=":
+                    self._advance()
+                    yield self._get_token(TokenType.LESS_EQUAL)
+                else:
+                    yield self._get_token(TokenType.LESS)
+            elif self._curr == ">":
+                self._new_token()
+                self._advance()
+                if self._curr == "=":
+                    self._advance()
+                    yield self._get_token(TokenType.GREATER_EQUAL)
+                else:
+                    yield self._get_token(TokenType.GREATER)
             elif self._curr == "=":
                 self._new_token()
                 if self._next == "=":
@@ -215,6 +236,10 @@ class TokenStream:
                 else:
                     self._advance()
                     yield self._get_token(TokenType.COLON)
+            elif self._curr == "!" and self._next == "=":
+                self._new_token()
+                self._advance(steps=2)
+                yield self._get_token(TokenType.NOT_EQUAL)
             elif self._curr in SIMPLE_TOKENS.keys():
                 type = SIMPLE_TOKENS[self._curr]
                 self._new_token()

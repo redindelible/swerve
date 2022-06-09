@@ -7,7 +7,11 @@ struct Holder[T, K] {
 
 
 fn fibo(n: int) -> int {
-    return n;
+    if (n < 2) {
+        return n;
+    } else {
+        return 2;
+    }
 }
 
 

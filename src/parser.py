@@ -281,7 +281,8 @@ class ParseState:
         else:
             self.push_loc()
             expr = self.parse_expr()
-            self.expect(TokenType.SEMICOLON)
+            if expr.requires_semicolon() or self.match(TokenType.SEMICOLON):
+                self.expect(TokenType.SEMICOLON)
             return ASTExprStmt(expr, self.pop_loc())
 
     def parse_while(self):
@@ -378,12 +379,24 @@ class ParseState:
         return left
 
     def parse_precedence_4(self) -> ASTExpr:
-        left = self.parse_precedence_5()
+        left = self.parse_comparison()
         while self.match(TokenType.AND):
             self.push_loc()
             self.expect(TokenType.AND)
-            right = self.parse_precedence_5()
+            right = self.parse_comparison()
             left = ASTAndExpr(left, right, self.pop_loc().combine(left.loc))
+        return left
+
+    def parse_comparison(self) -> ASTExpr:
+        left = self.parse_precedence_5()
+        while True:
+            if self.match(TokenType.LESS):
+                self.push_loc()
+                self.expect(TokenType.LESS)
+                right = self.parse_precedence_5()
+                left = ASTLessExpr(left, right, self.pop_loc().combine(left.loc))
+            else:
+                break
         return left
 
     def parse_precedence_5(self) -> ASTExpr:

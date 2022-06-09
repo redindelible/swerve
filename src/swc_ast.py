@@ -11,7 +11,8 @@ __all__ = ["ASTFunction", "ASTParameter", "ASTStmt", "ASTLetStmt", "ASTVarStmt",
     "ASTReturnStmt", "ASTAssign", "ASTAddExpr", "ASTSubExpr", "ASTMulExpr", "ASTDivExpr", "ASTPowExpr", "ASTOrExpr", "ASTAndExpr",
     "ASTNegExpr", "ASTNotExpr", "ASTCallExpr", "ASTAttrExpr", "ASTIntegerExpr", "ASTStringExpr", "ASTGroupExpr", "ASTIdentExpr",
     "ASTType", "ASTTypeIdent", "ASTFile", "ASTNode", "ASTProgram", "ASTTopLevel", "ASTStruct", "ASTTypeVariable", "ASTMethod",
-    "ASTStructField", "ASTImport", "ASTBinaryExpr", "ASTForStmt", "ASTIfExpr", "ASTWhileStmt", "ASTTypeGeneric", "ASTGenericExpr"]
+    "ASTStructField", "ASTImport", "ASTBinaryExpr", "ASTForStmt", "ASTIfExpr", "ASTWhileStmt", "ASTTypeGeneric", "ASTGenericExpr",
+    "ASTLessExpr", "ASTLessEqualExpr", "ASTGreaterExpr", "ASTGreaterEqualExpr"]
 
 
 class Printer:
@@ -324,6 +325,10 @@ class ASTReturnStmt(ASTStmt):
 
 
 class ASTExpr(ASTNode):
+    @staticmethod
+    def requires_semicolon():
+        return True
+
     def pretty_print(self, printer: Printer):
         raise NotImplementedError()
 
@@ -334,6 +339,10 @@ class ASTIfExpr(ASTExpr):
         self.cond = cond
         self.then_do = then_do
         self.else_do = else_do
+
+    @staticmethod
+    def requires_semicolon():
+        return False
 
     def pretty_print(self, printer: Printer):
         printer.print(f"If:")
@@ -354,6 +363,10 @@ class ASTBlockExpr(ASTExpr):
     def __init__(self, body: list[ASTStmt], location: Location):
         super().__init__(location)
         self.stmts = body
+
+    @staticmethod
+    def requires_semicolon():
+        return False
 
     def pretty_print(self, printer: Printer):
         printer.print("Method:")
@@ -423,6 +436,21 @@ class ASTOrExpr(ASTBinaryExpr):
 class ASTAndExpr(ASTBinaryExpr):
     NAME = "And"
 
+
+class ASTLessExpr(ASTBinaryExpr):
+    NAME = "Less"
+
+
+class ASTLessEqualExpr(ASTBinaryExpr):
+    NAME = "LessEqual"
+
+
+class ASTGreaterExpr(ASTBinaryExpr):
+    NAME = "Greater"
+
+
+class ASTGreaterEqualExpr(ASTBinaryExpr):
+    NAME = "GreaterEqual"
 
 class ASTNegExpr(ASTExpr):
     def __init__(self, token: Token, right: ASTExpr, location: Location):

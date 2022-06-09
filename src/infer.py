@@ -127,6 +127,8 @@ class BidirectionalTypeInference:
             self.infer_decl_stmt(stmt)
         elif isinstance(stmt, IRReturnStmt):
             self.infer_return_stmt(stmt)
+        elif isinstance(stmt, IRExprStmt):
+            self.unify_expr(stmt.expr, None, None)
         else:
             raise ValueError(type(stmt))
 
@@ -156,6 +158,10 @@ class BidirectionalTypeInference:
             return self.unify_attr_expr(expr, bound, bound_loc)
         elif isinstance(expr, IRBinaryExpr):
             return self.unify_binary_expr(expr, bound, bound_loc)
+        elif isinstance(expr, IRIf):
+            return self.unify_if_expr(expr, bound, bound_loc)
+        elif isinstance(expr, IRBlock):
+            return self.unify_block_expr(expr, bound, bound_loc)
         else:
             raise ValueError(type(expr))
 
@@ -225,8 +231,46 @@ class BidirectionalTypeInference:
                     return expr.yield_type
                 else:
                     raise CompilerMessage(ErrorType.COMPILATION, f"Mismatched arguments to addition (left is {left_type}, right is {right_type}):", expr.loc)
+            case "Less":
+                left_type = self.unify_expr(expr.left, None, None)
+                right_type = self.unify_expr(expr.right, None, None)
+                if isinstance(left_type, IRIntegerType) and isinstance(right_type, IRIntegerType):
+                    expr.yield_type = IRBoolType()
+                    return expr.yield_type
+                else:
+                    raise CompilerMessage(ErrorType.COMPILATION, f"Mismatched arguments to comparison (left is {left_type}, right is {right_type}):", expr.loc)
             case _:
-                raise ValueError()
+                raise ValueError(expr.op)
+
+    def unify_if_expr(self, expr: IRIf, bound: IRResolvedType | None, bound_loc: Location | None) -> IRResolvedType:
+        self.unify_expr(expr.cond, IRBoolType(), None)
+        result_type = self.unify_expr(expr.then_do, bound, bound_loc)
+        if expr.else_do is not None:
+            else_result = self.unify_expr(expr.else_do, bound, bound_loc)
+        else:
+            else_result = IRUnitType()
+        if else_result.is_subtype(result_type):
+            pass
+        elif result_type.is_subtype(else_result):
+            result_type = else_result
+        else:
+            raise CompilerMessage(ErrorType.COMPILATION, f"The if expression's branches do not have reconcilable result types (then's is {result_type}, else's is {result_type}):", expr.loc)
+        expr.yield_type = result_type
+        return expr.yield_type
+
+    def unify_block_expr(self, expr: IRBlock, bound: IRResolvedType | None, bound_loc: Location | None) -> IRResolvedType:
+        for stmt in expr.body:
+            self.infer_stmt(stmt)
+        expr.yield_type = IRUnitType()
+        if len(expr.body) > 0:
+            last_stmt = expr.body[-1]
+            if isinstance(last_stmt, IRExprStmt):
+                expr.yield_type = last_stmt.expr
+            yield_loc = last_stmt.loc
+        else:
+            yield_loc = expr.loc
+        self.unify_type(expr.yield_type, bound, yield_loc, bound_loc)
+        return expr.yield_type
 
     def unify_type(self, yield_type: IRResolvedType | None, bound_type: IRResolvedType | None, yield_loc: Location, expected_loc: Location | None) -> tuple[IRResolvedType, IRResolvedType]:
         if yield_type is None and bound_type is None:

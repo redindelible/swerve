@@ -131,6 +131,7 @@ class ResolveNames:
         ns = self.push(self.program_namespace)
         ns.declare_type("int", IRTypeDecl(IRIntegerType(64), BuiltinLocation()))
         ns.declare_type("str", IRTypeDecl(IRStringType(), BuiltinLocation()))
+        ns.declare_type("bool", IRTypeDecl(IRBoolType(), BuiltinLocation()))
         for file in program.files:
             self.collect_file(file)
         self.pop()
@@ -279,6 +280,8 @@ class ResolveNames:
             params.append(IRParameter(param_decl, param.name, self.resolve_type(param.type)))
 
         body = self.resolve_body(function.body, self.pop())
+        if not body.always_returns():
+            raise CompilerMessage(ErrorType.COMPILATION, f"Cannot prove that function always has a return value:", function.loc)
         return IRFunction(self.value_decls[function], function.name, params, ret_type, body)
 
     def resolve_stmt(self, stmt: ASTStmt) -> IRStmt:
