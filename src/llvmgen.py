@@ -104,11 +104,13 @@ class LLVMGen:
         func = ir.Function(self.module, func_type, self.new_name(function.name))
 
         self.decl_values[function.decl] = func
-        for ir_arg, llvm_arg in zip(function.parameters, func.args):
-            self.decl_values[ir_arg.decl] = llvm_arg
 
         entry_block = func.append_basic_block("entry")
         self.builder = ir.IRBuilder(entry_block)
+        for ir_arg, llvm_arg in zip(function.parameters, func.args):
+            arg_slot = self.decl_values[ir_arg.decl] = self.builder.alloca(self.generate_type(ir_arg.type))
+            self.builder.store(llvm_arg, arg_slot)
+
         for stmt in function.body.body:
             self.generate_stmt(stmt)
 
@@ -126,6 +128,8 @@ class LLVMGen:
             self.generate_return_stmt(stmt)
         elif isinstance(stmt, IRExprStmt):
             self.generate_expr(stmt.expr)
+        elif isinstance(stmt, IRWhileStmt):
+            self.generate_while_stmt(stmt)
         else:
             raise ValueError(type(stmt))
 
@@ -135,6 +139,22 @@ class LLVMGen:
 
     def generate_return_stmt(self, stmt: IRReturnStmt):
         self.builder.ret(self.generate_expr(stmt.expr))
+
+    def generate_while_stmt(self, stmt: IRWhileStmt):
+        if self.builder.block.terminator is not None:
+            return
+        cond_block = self.builder.append_basic_block()
+        body_block = self.builder.append_basic_block()
+        after_block = self.builder.append_basic_block()
+        self.builder.branch(cond_block)
+        self.builder.position_at_start(cond_block)
+        cond = self.generate_expr(stmt.cond)
+        self.builder.cbranch(cond, body_block, after_block)
+        self.builder.position_at_start(body_block)
+        self.generate_expr(stmt.body)
+        if self.builder.block.terminator is None:
+            self.builder.branch(cond_block)
+        self.builder.position_at_start(after_block)
 
     def generate_expr(self, expr: IRExpr) -> ir.Value:
         if isinstance(expr, IRIntegerExpr):
@@ -153,6 +173,8 @@ class LLVMGen:
             return self.generate_if_expr(expr)
         elif isinstance(expr, IRBlock):
             return self.generate_block_expr(expr)
+        elif isinstance(expr, IRAssign):
+            return self.generate_assign(expr)
         elif isinstance(expr, IRAttrAssign):
             return self.generate_attr_assign(expr)
         elif isinstance(expr, IRLambda):
@@ -191,8 +213,20 @@ class LLVMGen:
                 return self.builder.mul(self.generate_expr(expr.left), self.generate_expr(expr.right))
             case "Div":
                 return self.builder.sdiv(self.generate_expr(expr.left), self.generate_expr(expr.right))
+            case "Mod":
+                return self.builder.srem(self.generate_expr(expr.left), self.generate_expr(expr.right))
             case "Less":
                 return self.builder.icmp_signed("<", self.generate_expr(expr.left), self.generate_expr(expr.right))
+            case "Greater":
+                return self.builder.icmp_signed(">", self.generate_expr(expr.left), self.generate_expr(expr.right))
+            case "LessEqual":
+                return self.builder.icmp_signed("<=", self.generate_expr(expr.left), self.generate_expr(expr.right))
+            case "GreaterEqual":
+                return self.builder.icmp_signed(">=", self.generate_expr(expr.left), self.generate_expr(expr.right))
+            case "Equal":
+                return self.builder.icmp_signed("==", self.generate_expr(expr.left), self.generate_expr(expr.right))
+            case "NotEqual":
+                return self.builder.icmp_signed("!=", self.generate_expr(expr.left), self.generate_expr(expr.right))
             case _:
                 raise ValueError(expr.op)
 
@@ -236,7 +270,42 @@ class LLVMGen:
         object = self.generate_expr(expr.obj)
         element_pointer = self.builder.gep(object, (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), expr.index),))
         value = self.generate_expr(expr.value)
+        match expr.op:
+            case "none":
+                pass
+            case "Add":
+                value = self.builder.add(self.builder.load(element_pointer), value)
+            case "Sub":
+                value = self.builder.sub(self.builder.load(element_pointer), value)
+            case "Mul":
+                value = self.builder.mul(self.builder.load(element_pointer), value)
+            case "Div":
+                value = self.builder.sdiv(self.builder.load(element_pointer), value)
+            case "Mod":
+                value = self.builder.srem(self.builder.load(element_pointer), value)
         self.builder.store(value, element_pointer)
+        return value
+
+    def generate_assign(self, expr: IRAssign) -> ir.Value:
+        name = self.decl_values[expr.name]
+        value = self.generate_expr(expr.value)
+        if isinstance(name.type, ir.PointerType) and not isinstance(name.type.pointee, ir.FunctionType):
+            match expr.op:
+                case "none":
+                    pass
+                case "Add":
+                    value = self.builder.add(self.builder.load(name), value)
+                case "Sub":
+                    value = self.builder.sub(self.builder.load(name), value)
+                case "Mul":
+                    value = self.builder.mul(self.builder.load(name), value)
+                case "Div":
+                    value = self.builder.sdiv(self.builder.load(name), value)
+                case "Mod":
+                    value = self.builder.srem(self.builder.load(name), value)
+            self.builder.store(value, name)
+        else:
+            raise ValueError()
         return value
 
     def generate_lambda(self, expr: IRLambda) -> ir.Value:

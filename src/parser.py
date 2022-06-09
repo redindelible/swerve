@@ -361,7 +361,7 @@ class ParseState:
 
     def parse_precedence_2(self) -> ASTExpr:
         left = self.parse_precedence_3()
-        if self.match(TokenType.EQUAL, TokenType.PLUS_EQUAL, TokenType.MINUS_EQUAL, TokenType.STAR_EQUAL, TokenType.SLASH_EQUAL):
+        if self.match(TokenType.EQUAL, TokenType.PLUS_EQUAL, TokenType.MINUS_EQUAL, TokenType.STAR_EQUAL, TokenType.SLASH_EQUAL, TokenType.PERCENT_EQUAL):
             self.push_loc()
             assign_type = self.advance()
             right = self.parse_precedence_2()
@@ -376,6 +376,8 @@ class ParseState:
                     op = "Mul"
                 case TokenType.SLASH_EQUAL:
                     op = "Div"
+                case TokenType.PERCENT_EQUAL:
+                    op = "Mod"
                 case _:
                     raise ValueError()
             if isinstance(left, ASTIdentExpr):
@@ -413,6 +415,26 @@ class ParseState:
                 self.expect(TokenType.LESS)
                 right = self.parse_precedence_5()
                 left = ASTLessExpr(left, right, self.pop_loc().combine(left.loc))
+            elif self.match(TokenType.LESS_EQUAL):
+                self.push_loc()
+                self.expect(TokenType.LESS_EQUAL)
+                right = self.parse_precedence_5()
+                left = ASTLessEqualExpr(left, right, self.pop_loc().combine(left.loc))
+            elif self.match(TokenType.GREATER):
+                self.push_loc()
+                self.expect(TokenType.GREATER)
+                right = self.parse_precedence_5()
+                left = ASTGreaterExpr(left, right, self.pop_loc().combine(left.loc))
+            elif self.match(TokenType.EQUAL_EQUAL):
+                self.push_loc()
+                self.expect(TokenType.EQUAL_EQUAL)
+                right = self.parse_precedence_5()
+                left = ASTEqualExpr(left, right, self.pop_loc().combine(left.loc))
+            elif self.match(TokenType.NOT_EQUAL):
+                self.push_loc()
+                self.expect(TokenType.NOT_EQUAL)
+                right = self.parse_precedence_5()
+                left = ASTNotEqualExpr(left, right, self.pop_loc().combine(left.loc))
             else:
                 break
         return left
@@ -447,6 +469,11 @@ class ParseState:
                 self.expect(TokenType.SLASH)
                 right = self.parse_precedence_7()
                 left = ASTDivExpr(left, right, self.pop_loc().combine(left.loc))
+            elif self.match(TokenType.PERCENT):
+                self.push_loc()
+                self.expect(TokenType.PERCENT)
+                right = self.parse_precedence_7()
+                left = ASTModExpr(left, right, self.pop_loc().combine(left.loc))
             else:
                 break
         return left

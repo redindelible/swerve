@@ -13,7 +13,7 @@ __all__ = ["ASTFunction", "ASTParameter", "ASTStmt", "ASTLetStmt", "ASTVarStmt",
     "ASTType", "ASTTypeIdent", "ASTFile", "ASTNode", "ASTProgram", "ASTTopLevel", "ASTStruct", "ASTTypeVariable", "ASTMethod",
     "ASTStructField", "ASTImport", "ASTBinaryExpr", "ASTForStmt", "ASTIfExpr", "ASTWhileStmt", "ASTTypeGeneric", "ASTGenericExpr",
     "ASTLessExpr", "ASTLessEqualExpr", "ASTGreaterExpr", "ASTGreaterEqualExpr", "ASTAttrAssign", "ASTTypeUnit", "ASTTypeFunction",
-    "ASTLambda"]
+    "ASTLambda", "ASTEqualExpr", "ASTNotEqualExpr", "ASTModExpr"]
 
 
 class Printer:
@@ -441,6 +441,10 @@ class ASTDivExpr(ASTBinaryExpr):
     NAME = "Div"
 
 
+class ASTModExpr(ASTBinaryExpr):
+    NAME = "Mod"
+
+
 class ASTPowExpr(ASTBinaryExpr):
     NAME = "Pow"
 
@@ -467,6 +471,15 @@ class ASTGreaterExpr(ASTBinaryExpr):
 
 class ASTGreaterEqualExpr(ASTBinaryExpr):
     NAME = "GreaterEqual"
+
+
+class ASTEqualExpr(ASTBinaryExpr):
+    NAME = "Equal"
+
+
+class ASTNotEqualExpr(ASTBinaryExpr):
+    NAME = "NotEqual"
+
 
 class ASTNegExpr(ASTExpr):
     def __init__(self, token: Token, right: ASTExpr, location: Location):

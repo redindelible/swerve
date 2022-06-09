@@ -1,27 +1,27 @@
 import std::putc
 
 
-struct Holder[T, K] {
-    number: T
-    other_number: K
+struct Holder[T] {
+    a: T
 }
 
 
-fn fibo(n: int) -> int {
-    if (n < 2) {
-        return n;
-    } else {
-        return fibo(n-1) + fibo(n-2);
+fn collatz(num: int) -> int {
+    let times := 0;
+    while (num != 1) {
+        if (num % 2 == 0) {
+            num = num / 2;
+        } else {
+            num = num * 3 + 1;
+            times += 1;
+        }
     }
-}
-
-
-fn call(func: (int) -> int, arg: int) -> int {
-    return func(arg);
+    return times;
 }
 
 
 fn main() -> int {
-    let a := Holder[int, int](22, 32);
-    return call(|n| n * 2, a.number);
+    let val := Holder[int](collatz(15));
+    val.a += 1;
+    return val.a;
 }

@@ -133,6 +133,8 @@ class BidirectionalTypeInference:
             self.infer_return_stmt(stmt)
         elif isinstance(stmt, IRExprStmt):
             self.unify_expr(stmt.expr, None, None)
+        elif isinstance(stmt, IRWhileStmt):
+            self.infer_while_stmt(stmt)
         else:
             raise ValueError(type(stmt))
 
@@ -146,6 +148,10 @@ class BidirectionalTypeInference:
 
     def infer_return_stmt(self, stmt: IRReturnStmt):
         self.unify_expr(stmt.expr, self.expected_return_type, self.expected_return_loc)
+
+    def infer_while_stmt(self, stmt: IRWhileStmt):
+        self.unify_expr(stmt.cond, IRBoolType(), None)
+        self.unify_expr(stmt.body, None, None)
 
     def unify_expr(self, expr: IRExpr, bound: IRResolvedType | None, bound_loc: Location | None) -> IRResolvedType:
         if isinstance(expr, IRIntegerExpr):
@@ -274,6 +280,17 @@ class BidirectionalTypeInference:
                     raise CompilerMessage(ErrorType.COMPILATION,
                                           f"Mismatched arguments to division (left is {left_type}, right is {right_type}):",
                                           expr.loc)
+            case "Mod":
+                left_type = self.unify_expr(expr.left, None, None)
+                right_type = self.unify_expr(expr.right, None, None)
+                if isinstance(left_type, IRIntegerType) and isinstance(right_type, IRIntegerType):
+                    expr.yield_type, _ = self.unify_type(IRIntegerType(max(left_type.bits, right_type.bits)), bound,
+                                                         expr.loc, bound_loc)
+                    return expr.yield_type
+                else:
+                    raise CompilerMessage(ErrorType.COMPILATION,
+                                          f"Mismatched arguments to modulus (left is {left_type}, right is {right_type}):",
+                                          expr.loc)
             # case "Pow":
             #     left_type = self.unify_expr(expr.left, None, None)
             #     right_type = self.unify_expr(expr.right, None, None)
@@ -285,7 +302,7 @@ class BidirectionalTypeInference:
             #         raise CompilerMessage(ErrorType.COMPILATION,
             #                               f"Mismatched arguments to exponentiation (left is {left_type}, right is {right_type}):",
             #                               expr.loc)
-            case "Less":
+            case "Less" | "Greater" | "LessEqual" | "GreaterEqual" | "Equal" | "NotEqual":
                 left_type = self.unify_expr(expr.left, None, None)
                 right_type = self.unify_expr(expr.right, None, None)
                 if isinstance(left_type, IRIntegerType) and isinstance(right_type, IRIntegerType):
@@ -319,7 +336,7 @@ class BidirectionalTypeInference:
         if len(expr.body) > 0:
             last_stmt = expr.body[-1]
             if isinstance(last_stmt, IRExprStmt):
-                expr.yield_type = last_stmt.expr
+                expr.yield_type = last_stmt.expr.yield_type
             yield_loc = last_stmt.loc
         else:
             yield_loc = expr.loc

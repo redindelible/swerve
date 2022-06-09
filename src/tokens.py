@@ -22,6 +22,8 @@ class TokenType(Enum):
     # STAR_STAR_EQUAL = "`**=`"
     SLASH_EQUAL = "`/=`"
     SLASH_SLASH_EQUAL = "`//=`"
+    PERCENT = "`%`"
+    PERCENT_EQUAL = "`%=`"
     LESS = "`<`"
     LESS_EQUAL = "`<=`"
     GREATER = "`>`"
@@ -206,6 +208,14 @@ class TokenStream:
                         yield self._get_token(TokenType.SLASH_SLASH)
                 else:
                     yield self._get_token(TokenType.SLASH)
+            elif self._curr == "%":
+                self._new_token()
+                if self._next == "=":
+                    self._advance(steps=2)
+                    yield self._get_token(TokenType.PERCENT_EQUAL)
+                else:
+                    self._advance()
+                    yield self._get_token(TokenType.PERCENT)
             elif self._curr == "<":
                 self._new_token()
                 self._advance()
