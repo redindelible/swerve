@@ -145,19 +145,19 @@ class ResolveNames:
         self.file_namespaces[file] = self.pop()
 
     def collect_function(self, function: ASTFunction):
-        decl = self.curr_ns.declare_value(function.name, IRValueDecl(IRUnresolvedUnknownType(), function.location))
+        decl = self.curr_ns.declare_value(function.name, IRValueDecl(IRUnresolvedUnknownType(), function.loc))
         self.value_decls[function] = decl
 
     def collect_struct(self, struct: ASTStruct):
-        type_decl = self.curr_ns.declare_type(struct.name, IRTypeDecl(IRUnresolvedUnknownType(), struct.location))
+        type_decl = self.curr_ns.declare_type(struct.name, IRTypeDecl(IRUnresolvedUnknownType(), struct.loc))
         struct_ns = self.push(Namespace())
         for method in struct.methods:
-            decl = self.curr_ns.declare_value(method.name, IRValueDecl(IRUnresolvedUnknownType(), method.location))
+            decl = self.curr_ns.declare_value(method.name, IRValueDecl(IRUnresolvedUnknownType(), method.loc))
         self.pop()
         self.struct_type_decls[struct] = type_decl
 
         # constructor
-        decl = self.curr_ns.declare_value(struct.name, IRValueDecl(IRUnresolvedUnknownType(), struct.location))
+        decl = self.curr_ns.declare_value(struct.name, IRValueDecl(IRUnresolvedUnknownType(), struct.loc))
         self.value_decls[struct] = decl
 
     def resolve_imports(self):
@@ -178,7 +178,7 @@ class ResolveNames:
             ast_import, import_ns = all_imports.pop()
             file_ns = self.file_namespaces[file_paths[ast_import.path.resolve()]]
             if len(ast_import.names) == 0:
-                import_ns.declare_namespace(ast_import.path.stem, file_ns, ast_import.location)
+                import_ns.declare_namespace(ast_import.path.stem, file_ns, ast_import.loc)
                 all_imports.extend(waiting_imports)
                 waiting_imports.clear()
             else:
@@ -186,29 +186,29 @@ class ResolveNames:
                 for namespace_name in ast_import.names[:-1]:
                     if namespace_name in ns.not_yet_imported:
                         break
-                    ns = ns.get_namespace(namespace_name, ast_import.location)
+                    ns = ns.get_namespace(namespace_name, ast_import.loc)
                 else:
                     name = ast_import.names[-1]
                     if name not in ns.not_yet_imported:
                         any_imported = False
                         if ns.has_namespace(name):
-                            import_ns.declare_namespace(ast_import.as_name, ns.get_namespace(name, ast_import.location), ast_import.location)
+                            import_ns.declare_namespace(ast_import.as_name, ns.get_namespace(name, ast_import.loc), ast_import.loc)
                             any_imported = True
                         if ns.has_value(name):
-                            import_ns.declare_value(ast_import.as_name, ns.get_value(name, ast_import.location))
+                            import_ns.declare_value(ast_import.as_name, ns.get_value(name, ast_import.loc))
                             any_imported = True
                         if ns.has_type(name):
-                            import_ns.declare_type(ast_import.as_name, ns.get_type(name, ast_import.location))
+                            import_ns.declare_type(ast_import.as_name, ns.get_type(name, ast_import.loc))
                             any_imported = True
                         if not any_imported:
-                            raise CompilerMessage(ErrorType.COMPILATION, f"No name '{name}' in '{ast_import.path}'", ast_import.location)
+                            raise CompilerMessage(ErrorType.COMPILATION, f"No name '{name}' in '{ast_import.path}'", ast_import.loc)
                         # if we've imported something, break the for-loop and go through the while loop agan
                         all_imports.extend(waiting_imports)
                         waiting_imports.clear()
                     else:
                         waiting_imports.append((ast_import, import_ns))
         if len(waiting_imports) != 0:
-            raise CompilerMessage(ErrorType.COMPILATION, f"Cyclic imports detected, one such shown below", waiting_imports[0][0].location)
+            raise CompilerMessage(ErrorType.COMPILATION, f"Cyclic imports detected, one such shown below", waiting_imports[0][0].loc)
 
     def resolve_names(self) -> IRProgram:
         program = IRProgram([], [])
@@ -237,16 +237,16 @@ class ResolveNames:
                 bound = None
             else:
                 bound = self.resolve_type(type_var.bound)
-            type_decl = type_var_ns.declare_type(type_var.name, IRTypeDecl(IRUnresolvedUnknownType(), type_var.location))
+            type_decl = type_var_ns.declare_type(type_var.name, IRTypeDecl(IRUnresolvedUnknownType(), type_var.loc))
             type_vars.append(IRTypeVariable(type_var.name, bound, type_decl))
 
         supertraits = []
         for supertrait in struct.supertraits:
             supertraits.append(self.resolve_type(supertrait))
 
-        fields = {}
+        fields = []
         for field in struct.fields:
-            fields[field.name] = self.resolve_type(field.type)
+            fields.append(IRField(field.name, self.resolve_type(field.type)).set_loc(field.loc))
 
         for method in struct.methods:
             ret_type = self.resolve_type(method.return_type)
@@ -257,7 +257,7 @@ class ResolveNames:
                 self_decl = self.curr_ns.declare_value(method.self_name, IRValueDecl(IRUnresolvedUnknownType(), BuiltinLocation()))
                 params.append(IRParameter(self_decl, method.name, IRUnresolvedNameType(struct_type_decl)))
             for param in method.parameters:
-                param_decl = self.curr_ns.declare_value(param.name, IRValueDecl(IRUnresolvedUnknownType(), param.location))
+                param_decl = self.curr_ns.declare_value(param.name, IRValueDecl(IRUnresolvedUnknownType(), param.loc))
                 params.append(IRParameter(param_decl, param.name, self.resolve_type(param.type)))
 
             body = self.resolve_body(method.body, self.pop())
@@ -275,7 +275,7 @@ class ResolveNames:
         body_ns = self.push(Namespace())
         params = []
         for param in function.parameters:
-            param_decl = self.curr_ns.declare_value(param.name, IRValueDecl(IRUnresolvedUnknownType(), param.location))
+            param_decl = self.curr_ns.declare_value(param.name, IRValueDecl(IRUnresolvedUnknownType(), param.loc))
             params.append(IRParameter(param_decl, param.name, self.resolve_type(param.type)))
 
         body = self.resolve_body(function.body, self.pop())
@@ -283,7 +283,7 @@ class ResolveNames:
 
     def resolve_stmt(self, stmt: ASTStmt) -> IRStmt:
         if isinstance(stmt, ASTLetStmt) or isinstance(stmt, ASTVarStmt):
-            decl = self.curr_ns.declare_value(stmt.name, IRValueDecl(IRUnresolvedUnknownType(), stmt.location))
+            decl = self.curr_ns.declare_value(stmt.name, IRValueDecl(IRUnresolvedUnknownType(), stmt.loc))
             if stmt.type is None:
                 type = IRUnresolvedUnknownType()
             else:
@@ -295,7 +295,7 @@ class ResolveNames:
             return IRWhileStmt(self.resolve_expr(stmt.cond), self.resolve_expr(stmt.body))
         elif isinstance(stmt, ASTForStmt):
             self.push(Namespace())
-            decl = self.curr_ns.declare_value(stmt.iter_var, IRValueDecl(IRUnresolvedUnknownType(), stmt.iterator.location))
+            decl = self.curr_ns.declare_value(stmt.iter_var, IRValueDecl(IRUnresolvedUnknownType(), stmt.iterator.loc))
             ir_stmt = IRForStmt(decl, self.resolve_expr(stmt.iterator), self.resolve_expr(stmt.body))
             self.pop()
             return ir_stmt
@@ -308,27 +308,27 @@ class ResolveNames:
         if isinstance(expr, ASTBlockExpr):
             return self.resolve_body(expr)
         elif isinstance(expr, ASTIfExpr):
-            return IRIf(self.resolve_expr(expr.cond), self.resolve_expr(expr.then_do), None if expr.else_do is None else self.resolve_expr(expr.else_do))
+            return IRIf(self.resolve_expr(expr.cond), self.resolve_expr(expr.then_do), None if expr.else_do is None else self.resolve_expr(expr.else_do)).set_loc(expr.loc)
         elif isinstance(expr, ASTBinaryExpr):
-            return IRBinaryExpr(expr.NAME, self.resolve_expr(expr.left), self.resolve_expr(expr.right))
+            return IRBinaryExpr(expr.NAME, self.resolve_expr(expr.left), self.resolve_expr(expr.right)).set_loc(expr.loc)
         elif isinstance(expr, ASTAttrExpr):
-            return IRAttrExpr(self.resolve_expr(expr.object), expr.attr)
+            return IRAttrExpr(self.resolve_expr(expr.object), expr.attr).set_loc(expr.loc)
         elif isinstance(expr, ASTCallExpr):
-            return IRCallExpr(self.resolve_expr(expr.callee), [self.resolve_expr(arg) for arg in expr.arguments])
+            return IRCallExpr(self.resolve_expr(expr.callee), [self.resolve_expr(arg) for arg in expr.arguments]).set_loc(expr.loc)
         elif isinstance(expr, ASTGenericExpr):
-            return IRGenericExpr(self.resolve_expr(expr.generic), [self.resolve_type(arg) for arg in expr.arguments])
+            return IRGenericExpr(self.resolve_expr(expr.generic), [self.resolve_type(arg) for arg in expr.arguments]).set_loc(expr.loc)
         elif isinstance(expr, ASTIntegerExpr):
-            return IRIntegerExpr(expr.number)
+            return IRIntegerExpr(expr.number).set_loc(expr.loc)
         elif isinstance(expr, ASTStringExpr):
-            return IRStringExpr(expr.string)
+            return IRStringExpr(expr.string).set_loc(expr.loc)
         elif isinstance(expr, ASTGroupExpr):
-            return self.resolve_expr(expr.expr)
+            return self.resolve_expr(expr.expr).set_loc(expr.loc)
         elif isinstance(expr, ASTNegExpr):
-            return IRNegExpr(self.resolve_expr(expr.right))
+            return IRNegExpr(self.resolve_expr(expr.right)).set_loc(expr.loc)
         elif isinstance(expr, ASTNotExpr):
-            return IRNotExpr(self.resolve_expr(expr.right))
+            return IRNotExpr(self.resolve_expr(expr.right)).set_loc(expr.loc)
         elif isinstance(expr, ASTIdentExpr):
-            return IRNameExpr(self.get_value(expr.ident, expr.location))
+            return IRNameExpr(self.get_value(expr.ident, expr.loc)).set_loc(expr.loc)
         else:
             raise ValueError()
 
@@ -341,12 +341,12 @@ class ResolveNames:
         for stmt in body.stmts:
             stmts.append(self.resolve_stmt(stmt))
         self.pop()
-        return IRBlock(stmts)
+        return IRBlock(stmts).set_loc(body.loc)
 
     def resolve_type(self, type: ASTType) -> IRType:
         if isinstance(type, ASTTypeIdent):
-            return IRUnresolvedNameType(self.get_type(type.name, type.location))
+            return IRUnresolvedNameType(self.get_type(type.name, type.loc)).set_loc(type.loc)
         elif isinstance(type, ASTTypeGeneric):
-            return IRUnresolvedGenericType(self.resolve_type(type.generic), [self.resolve_type(arg) for arg in type.type_arguments])
+            return IRUnresolvedGenericType(self.resolve_type(type.generic), [self.resolve_type(arg) for arg in type.type_arguments]).set_loc(type.loc)
         else:
             raise ValueError()

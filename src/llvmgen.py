@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from swc_ir import *
-from common import BuiltinLocation, CompilerMessage, ErrorType, Location, Path
 from llvmlite import ir
 from llvmlite import binding as llvm
 
@@ -54,12 +53,12 @@ class LLVMGen:
                 # noinspection PyTypeChecker
                 struct_p_type: ir.PointerType = self.struct_types[struct.type_decl.type]
                 struct_type: ir.IdentifiedStructType = struct_p_type.pointee
-                struct_type.set_body(*(self.generate_type(field) for field in struct.fields.values()))
+                struct_type.set_body(*(self.generate_type(field.type) for field in struct.fields))
 
                 self.generate_constructor(struct, struct_p_type)
 
     def generate_constructor(self, struct: IRStruct, struct_type: ir.PointerType):
-        constructor_type = ir.FunctionType(struct_type, [self.generate_type(field) for field in struct.fields.values()])
+        constructor_type = ir.FunctionType(struct_type, [self.generate_type(field.type) for field in struct.fields])
         constructor = self.decl_values[struct.constructor] = ir.Function(self.module, constructor_type, f"{struct.name}_constructor")
 
         self.builder = ir.IRBuilder(constructor.append_basic_block("entry"))
@@ -79,7 +78,7 @@ class LLVMGen:
 
     def generate_function(self, function: IRFunction):
         ir_func_type = function.function_type
-        func_type = ir.FunctionType(self.generate_type(ir_func_type.ret_type), [self.generate_type(param_type) for param_type in ir_func_type.param_types])
+        func_type = ir.FunctionType(self.generate_type(ir_func_type.ret_type), [self.generate_type(param_type) for param_type, _ in ir_func_type.param_types])
         func = ir.Function(self.module, func_type, function.name)   # TODO mangling
 
         entry_block = func.append_basic_block("entry")

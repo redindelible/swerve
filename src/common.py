@@ -101,5 +101,4 @@ class SourceLocation(Location):
         ctxt += f"{' '*line_no_size}   {' '*line_pos}{'^'*caret_len}"
         if caret_len < self.length:
             ctxt += ">"
-        ctxt += "\n"
         return ctxt

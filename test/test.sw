@@ -1,11 +1,12 @@
 
 
-struct Holder[T] {
+struct Holder[T, K] {
     number: T
+    other_number: K
 }
 
 
 fn main() -> int {
-    let a: Holder[int] = Holder[int](425);
-    return a.number + 3;
+    let a: Holder[int, int] = Holder[int, int](425, 32);
+    return a.number + a.other_number;
 }

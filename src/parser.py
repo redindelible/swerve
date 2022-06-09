@@ -26,7 +26,7 @@ def parse_program(start: Path, import_dirs: list[Path]) -> ASTProgram:
         for top_level in file.top_levels:
             if isinstance(top_level, ASTImport):
                 path = top_level.path
-                to_visit.append((path.resolve(), top_level.location))
+                to_visit.append((path.resolve(), top_level.loc))
         visited.add(next_path)
     return ASTProgram(files)
 
@@ -364,7 +364,7 @@ class ParseState:
                 right = self.parse_precedence_2()
                 return ASTAssign(left, right, self.pop_loc())
             else:
-                raise CompilerMessage(ErrorType.PARSE, "Can only assign to identifiers", left.location)
+                raise CompilerMessage(ErrorType.PARSE, "Can only assign to identifiers", left.loc)
         else:
             return left
 
@@ -446,10 +446,10 @@ class ParseState:
             return self.parse_precedence_9()
 
     def parse_precedence_9(self) -> ASTExpr:
-        self.push_loc()
         left = self.parse_precedence_10()
         while True:
             if self.match(TokenType.LEFT_PAREN):
+                self.push_loc()
                 arguments: list[ASTExpr] = []
                 self.expect(TokenType.LEFT_PAREN)
                 while not self.match(TokenType.RIGHT_PAREN):
@@ -459,9 +459,10 @@ class ParseState:
                         self.expect(TokenType.COMMA)
                     else:
                         break
-                end = self.expect(TokenType.RIGHT_PAREN)
-                left = ASTCallExpr(left, arguments, end, self.pop_loc())
+                self.expect(TokenType.RIGHT_PAREN)
+                left = ASTCallExpr(left, arguments, self.pop_loc().combine(left.loc))
             elif self.match(TokenType.LEFT_BRACKET):
+                self.push_loc()
                 arguments: list[ASTType] = []
                 self.expect(TokenType.LEFT_BRACKET)
                 while not self.match(TokenType.RIGHT_BRACKET):
@@ -472,13 +473,13 @@ class ParseState:
                     else:
                         break
                 end = self.expect(TokenType.RIGHT_BRACKET)
-                left = ASTGenericExpr(left, arguments, self.pop_loc())
+                left = ASTGenericExpr(left, arguments, self.pop_loc().combine(left.loc))
             elif self.match(TokenType.DOT):
+                self.push_loc()
                 self.expect(TokenType.DOT)
                 attr = self.expect(TokenType.IDENT)
-                left = ASTAttrExpr(left, attr, self.pop_loc())
+                left = ASTAttrExpr(left, attr, self.pop_loc().combine(left.loc))
             else:
-                self.pop_loc()
                 break
         return left
 
@@ -514,7 +515,7 @@ class ParseState:
                 else:
                     break
             end = self.expect(TokenType.RIGHT_BRACKET)
-            type = ASTTypeGeneric(type, arguments, self.pop_loc())
+            type = ASTTypeGeneric(type, arguments, self.pop_loc().combine(type.loc))
         return type
 
     def parse_type_precedence_2(self) -> ASTType:

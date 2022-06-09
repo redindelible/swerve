@@ -30,7 +30,7 @@ class Printer:
 
 class ASTNode:
     def __init__(self, loc: Location):
-        self.location = loc
+        self.loc = loc
 
     def pretty_print(self, printer: Printer):
         raise NotImplementedError()
@@ -447,7 +447,7 @@ class ASTNotExpr(ASTExpr):
 
 
 class ASTCallExpr(ASTExpr):
-    def __init__(self, callee: ASTExpr, arguments: list[ASTExpr], end: Token, location: Location):
+    def __init__(self, callee: ASTExpr, arguments: list[ASTExpr], location: Location):
         super().__init__(location)
         self.callee = callee
         self.arguments = arguments

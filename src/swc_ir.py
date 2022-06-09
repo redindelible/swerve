@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 from typing import Callable
-from common import Location
+from common import Location, BuiltinLocation
 
 
 # __all__ = []
 
 
 class IRNode:
-    pass
+    def __init__(self):
+        self.loc: Location = BuiltinLocation()
+
+    def set_loc(self, loc: Location):
+        self.loc = loc
+        return self
 
 
 class IRValueDecl:
@@ -24,7 +29,17 @@ class IRTypeDecl:
 
 
 class IRType:
+    def __init__(self):
+        self.loc: Location = BuiltinLocation()
+
+    def set_loc(self, loc: Location):
+        self.loc = loc
+        return self
+
     def is_resolved(self) -> bool:
+        raise NotImplementedError()
+
+    def __str__(self):
         raise NotImplementedError()
 
 
@@ -32,20 +47,33 @@ class IRUnresolvedType(IRType):
     def is_resolved(self) -> bool:
         return False
 
+    def __str__(self):
+        raise NotImplementedError()
+
 
 class IRUnresolvedUnknownType(IRUnresolvedType):
-    pass
+    def __str__(self):
+        return "a type"
 
 
 class IRUnresolvedNameType(IRUnresolvedType):
     def __init__(self, decl: IRTypeDecl):
+        super().__init__()
         self.decl = decl
+        self.set_loc(self.loc)
+
+    def __str__(self):
+        return "an unresolved name type"
 
 
 class IRUnresolvedGenericType(IRUnresolvedType):
     def __init__(self, generic: IRType, type_args: list[IRType]):
+        super().__init__()
         self.generic = generic
         self.type_args = type_args
+
+    def __str__(self):
+        return "an unresolved generic type"
 
 
 class IRResolvedType(IRType):
@@ -58,9 +86,13 @@ class IRResolvedType(IRType):
     def is_concrete(self) -> bool:
         raise NotImplementedError()
 
+    def __str__(self):
+        raise NotImplementedError()
+
 
 class IRFunctionType(IRResolvedType):
-    def __init__(self, param_types: list[IRResolvedType], ret_type: IRResolvedType):
+    def __init__(self, param_types: list[tuple[IRResolvedType, Location]], ret_type: IRResolvedType):
+        super().__init__()
         self.param_types = param_types
         self.ret_type = ret_type
 
@@ -71,7 +103,7 @@ class IRFunctionType(IRResolvedType):
         if len(bound.param_types) != len(self.param_types):
             return False
 
-        for this_type, bound_type in zip(self.param_types, bound.param_types):
+        for (this_type, _), (bound_type, _) in zip(self.param_types, bound.param_types):
             if not bound_type.is_subtype(this_type):   # parameters are contravariant
                 return False
 
@@ -81,12 +113,15 @@ class IRFunctionType(IRResolvedType):
         return True
 
     def is_concrete(self) -> bool:
-        return all(param_type.is_resolved() for param_type in self.param_types) and self.ret_type.is_resolved()
+        return all(param_type.is_resolved() for param_type, _ in self.param_types) and self.ret_type.is_resolved()
+
+    def __str__(self):
+        return f"({', '.join(str(param) for param in self.param_types)}) -> {self.ret_type}"
 
 
 class IRGenericFunctionType(IRFunctionType):
-    def __init__(self, type_vars: list[IRTypeVariable], param_types: list[IRResolvedType], ret_type: IRResolvedType,
-                 callback: Callable[[list[IRResolvedType]], tuple[IRFunctionType, IRExpr]]):
+    def __init__(self, type_vars: list[IRTypeVariable], param_types: list[tuple[IRResolvedType, Location]], ret_type: IRResolvedType,
+                 callback: Callable[[list[IRResolvedType], Location], tuple[IRFunctionType, IRExpr]]):
         super().__init__(param_types, ret_type)
         self.type_vars = type_vars
 
@@ -103,6 +138,7 @@ class IRGenericFunctionType(IRFunctionType):
 
 class IRStructType(IRResolvedType):
     def __init__(self, struct: IRStruct):
+        super().__init__()
         self.struct = struct
 
     def is_subtype(self, bound: IRResolvedType) -> bool:
@@ -111,9 +147,13 @@ class IRStructType(IRResolvedType):
     def is_concrete(self) -> bool:
         return True
 
+    def __str__(self):
+        return f"struct '{self.struct.name}'"
+
 
 class IRGenericStructType(IRResolvedType):
     def __init__(self, generic: IRGenericStruct):
+        super().__init__()
         self.generic = generic
 
     def is_subtype(self, bound: IRResolvedType) -> bool:
@@ -122,9 +162,13 @@ class IRGenericStructType(IRResolvedType):
     def is_concrete(self) -> bool:
         return False
 
+    def __str__(self):
+        return f"struct '{self.generic.name}'"
+
 
 class IRGenericType(IRResolvedType):
     def __init__(self, generic: IRGenericStruct, type_parameters: list[IRResolvedType]):
+        super().__init__()
         self.generic = generic
         self.type_parameters = type_parameters
 
@@ -135,9 +179,13 @@ class IRGenericType(IRResolvedType):
     def is_concrete(self) -> bool:
         return False
 
+    def __str__(self):
+        return f"{self.generic}[{', '.join(str(arg) for arg in self.type_parameters)}]"
+
 
 class IRIntegerType(IRResolvedType):
     def __init__(self, bits: int):
+        super().__init__()
         self.bits = bits
 
     def is_subtype(self, bound: IRResolvedType) -> bool:
@@ -145,6 +193,12 @@ class IRIntegerType(IRResolvedType):
 
     def is_concrete(self) -> bool:
         return True
+
+    def __str__(self):
+        if self.bits == 64:
+            return "int"
+        else:
+            return f"i{self.bits}"
 
 
 class IRStringType(IRResolvedType):
@@ -154,9 +208,13 @@ class IRStringType(IRResolvedType):
     def is_concrete(self) -> bool:
         return True
 
+    def __str__(self):
+        return "str"
+
 
 class IRTypeVarType(IRResolvedType):
     def __init__(self, type_var: IRTypeVariable):
+        super().__init__()
         self.type_var = type_var
 
     def is_subtype(self, bound: IRResolvedType) -> bool:
@@ -165,6 +223,9 @@ class IRTypeVarType(IRResolvedType):
     def is_concrete(self) -> bool:
         return False
 
+    def __str__(self):
+        return self.type_var.name
+
 
 class IRProgram:
     def __init__(self, functions: list[IRFunction], structs: list[IRStruct]):
@@ -172,8 +233,9 @@ class IRProgram:
         self.structs = structs
 
 
-class IRStruct:
-    def __init__(self, type_decl: IRTypeDecl, constructor: IRValueDecl, name: str, supertraits: list[IRType], fields: dict[str, IRType], methods: list[IRMethod]):
+class IRStruct(IRNode):
+    def __init__(self, type_decl: IRTypeDecl, constructor: IRValueDecl, name: str, supertraits: list[IRType], fields: list[IRField], methods: list[IRMethod]):
+        super().__init__()
         self.type_decl = type_decl
         self.constructor = constructor
         self.name = name
@@ -184,11 +246,18 @@ class IRStruct:
 
 class IRGenericStruct(IRStruct):
     def __init__(self, type_decl: IRTypeDecl, constructor: IRValueDecl, name: str, type_vars: list[IRTypeVariable], supertraits: list[IRType],
-                 fields: dict[str, IRType], methods: list[IRMethod], generic_methods: list[IRGenericMethod]):
+                 fields: list[IRField], methods: list[IRMethod], generic_methods: list[IRGenericMethod]):
         super().__init__(type_decl, constructor, name, supertraits, fields, methods)
         self.type_vars = type_vars
 
         self.reifications: dict[tuple[IRResolvedType], IRStruct] = {}
+
+
+class IRField(IRNode):
+    def __init__(self, name: str, type: IRType):
+        super().__init__()
+        self.name = name
+        self.type = type
 
 
 class IRMethod:
@@ -208,19 +277,15 @@ class IRGenericMethod:
 
 class IRTypeVariable(IRNode):
     def __init__(self, name: str, bound: IRType | None, type_decl: IRTypeDecl):
+        super().__init__()
         self.name = name
         self.bound = bound
         self.type_decl = type_decl
 
 
-class IRField(IRNode):
-    def __init__(self, name: str, type: IRType):
-        self.name = name
-        self.type = type
-
-
 class IRFunction(IRNode):
     def __init__(self, decl: IRValueDecl, name: str, parameters: list[IRParameter], return_type: IRType, body: IRBlock):
+        super().__init__()
         self.decl = decl
         self.name = name
         self.parameters = parameters
@@ -232,6 +297,7 @@ class IRFunction(IRNode):
 
 class IRGenericFunction(IRNode):
     def __init__(self, decl: IRValueDecl, name: str, type_vars: list[IRTypeVariable], parameters: list[IRParameter], return_type: IRType, body: IRBlock):
+        super().__init__()
         self.decl = decl
         self.name = name
         self.type_vars = type_vars
@@ -244,6 +310,7 @@ class IRGenericFunction(IRNode):
 
 class IRParameter(IRNode):
     def __init__(self, decl: IRValueDecl, name: str, type: IRType):
+        super().__init__()
         self.decl = decl
         self.name = name
         self.type = type
@@ -255,11 +322,13 @@ class IRStmt(IRNode):
 
 class IRExprStmt(IRStmt):
     def __init__(self, expr: IRExpr):
+        super().__init__()
         self.expr = expr
 
 
 class IRDeclStmt(IRStmt):
     def __init__(self, decl: IRValueDecl, type: IRType, init: IRExpr):
+        super().__init__()
         self.decl = decl
         self.type = type
         self.init = init
@@ -267,12 +336,14 @@ class IRDeclStmt(IRStmt):
 
 class IRWhileStmt(IRStmt):
     def __init__(self, cond: IRExpr, body: IRExpr):
+        super().__init__()
         self.cond = cond
         self.body = body
 
 
 class IRForStmt(IRStmt):
     def __init__(self, iter_var: IRValueDecl, iterator: IRExpr, body: IRExpr):
+        super().__init__()
         self.iter_var = iter_var
         self.iterator = iterator
         self.body = body
@@ -280,11 +351,13 @@ class IRForStmt(IRStmt):
 
 class IRReturnStmt(IRStmt):
     def __init__(self, expr: IRExpr):
+        super().__init__()
         self.expr = expr
 
 
 class IRExpr(IRNode):
     def __init__(self):
+        super().__init__()
         self.yield_type: IRResolvedType | None = None
 
 
@@ -370,12 +443,3 @@ class IRNameExpr(IRExpr):
     def __init__(self, name: IRValueDecl):
         super().__init__()
         self.name = name
-
-
-# class IRTypeRef(IRNode):
-#     pass
-#
-#
-# class IRTypeRefName(IRTypeRef):
-#     def __init__(self, decl: IRTypeDecl):
-#         self.decl = decl
