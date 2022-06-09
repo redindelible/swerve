@@ -68,11 +68,11 @@ class ParseState:
         self._tried_match = []
         return ret
 
-    def match(self, type: TokenType) -> bool:
-        if self.curr.type == type:
+    def match(self, *types: TokenType) -> bool:
+        if self.curr.type in types:
             return True
         else:
-            self._tried_match.append(type)
+            self._tried_match.extend(types)
             return False
 
     def expect(self, type: TokenType) -> Token:
@@ -358,14 +358,29 @@ class ParseState:
 
     def parse_precedence_2(self) -> ASTExpr:
         left = self.parse_precedence_3()
-        if self.match(TokenType.EQUAL):
+        if self.match(TokenType.EQUAL, TokenType.PLUS_EQUAL, TokenType.MINUS_EQUAL, TokenType.STAR_EQUAL, TokenType.SLASH_EQUAL):
             self.push_loc()
+            assign_type = self.advance()
+            right = self.parse_precedence_2()
+            match assign_type.type:
+                case TokenType.EQUAL:
+                    op = "none"
+                case TokenType.PLUS_EQUAL:
+                    op = "Add"
+                case TokenType.MINUS_EQUAL:
+                    op = "Sub"
+                case TokenType.STAR_EQUAL:
+                    op = "Mul"
+                case TokenType.SLASH_EQUAL:
+                    op = "Div"
+                case _:
+                    raise ValueError()
             if isinstance(left, ASTIdentExpr):
-                self.expect(TokenType.EQUAL)
-                right = self.parse_precedence_2()
-                return ASTAssign(left, right, self.pop_loc().combine(left.loc))
+                return ASTAssign(left, op, right, self.pop_loc().combine(left.loc))
+            elif isinstance(left, ASTAttrExpr):
+                return ASTAttrAssign(left.object, left.attr, op, right, self.pop_loc().combine(left.loc))
             else:
-                raise CompilerMessage(ErrorType.PARSE, "Can only assign to identifiers", left.loc)
+                raise CompilerMessage(ErrorType.PARSE, "Can only assign to identifiers or attributes", left.loc)
         else:
             return left
 

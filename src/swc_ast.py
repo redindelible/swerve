@@ -12,7 +12,7 @@ __all__ = ["ASTFunction", "ASTParameter", "ASTStmt", "ASTLetStmt", "ASTVarStmt",
     "ASTNegExpr", "ASTNotExpr", "ASTCallExpr", "ASTAttrExpr", "ASTIntegerExpr", "ASTStringExpr", "ASTGroupExpr", "ASTIdentExpr",
     "ASTType", "ASTTypeIdent", "ASTFile", "ASTNode", "ASTProgram", "ASTTopLevel", "ASTStruct", "ASTTypeVariable", "ASTMethod",
     "ASTStructField", "ASTImport", "ASTBinaryExpr", "ASTForStmt", "ASTIfExpr", "ASTWhileStmt", "ASTTypeGeneric", "ASTGenericExpr",
-    "ASTLessExpr", "ASTLessEqualExpr", "ASTGreaterExpr", "ASTGreaterEqualExpr"]
+    "ASTLessExpr", "ASTLessEqualExpr", "ASTGreaterExpr", "ASTGreaterEqualExpr", "ASTAttrAssign"]
 
 
 class Printer:
@@ -376,18 +376,32 @@ class ASTBlockExpr(ASTExpr):
 
 
 class ASTAssign(ASTExpr):
-    def __init__(self, name: ASTIdentExpr, value: ASTExpr, location: Location):
+    def __init__(self, name: ASTIdentExpr, op: str, value: ASTExpr, location: Location):
         super().__init__(location)
         self.name: str = name.ident
+        self.op = op
         self.value = value
 
     def pretty_print(self, printer: Printer):
-        printer.print("Assign:")
-        with printer.indent():
-            printer.print(f"Name={self.name}")
-            printer.print(f"Value:")
-            with printer.indent():
-                self.value.pretty_print(printer)
+        # printer.print("Assign:")
+        # with printer.indent():
+        #     printer.print(f"Name={self.name}")
+        #     printer.print(f"Value:")
+        #     with printer.indent():
+        #         self.value.pretty_print(printer)
+        raise NotImplementedError()
+
+
+class ASTAttrAssign(ASTExpr):
+    def __init__(self, obj: ASTExpr, attr: str, op: str, value: ASTExpr, location: Location):
+        super().__init__(location)
+        self.obj = obj
+        self.attr = attr
+        self.op = op
+        self.value = value
+
+    def pretty_print(self, printer: Printer):
+        raise NotImplementedError()
 
 
 class ASTBinaryExpr(ASTExpr):

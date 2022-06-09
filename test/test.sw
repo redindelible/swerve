@@ -17,5 +17,6 @@ fn fibo(n: int) -> int {
 
 fn main() -> int {
     let a: Holder[int, int] = Holder[int, int](22, 32);
-    return fibo(a.number) + a.other_number;
+    a.number = a;
+    return a.number;
 }

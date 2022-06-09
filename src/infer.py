@@ -162,6 +162,10 @@ class BidirectionalTypeInference:
             return self.unify_if_expr(expr, bound, bound_loc)
         elif isinstance(expr, IRBlock):
             return self.unify_block_expr(expr, bound, bound_loc)
+        elif isinstance(expr, IRAssign):
+            return self.unify_assign(expr, bound, bound_loc)
+        elif isinstance(expr, IRAttrAssign):
+            return self.unify_attr_assign(expr, bound, bound_loc)
         else:
             raise ValueError(type(expr))
 
@@ -316,6 +320,30 @@ class BidirectionalTypeInference:
         self.unify_type(expr.yield_type, bound, yield_loc, bound_loc)
         return expr.yield_type
 
+    def unify_assign(self, expr: IRAssign, bound: IRResolvedType | None, bound_loc: Location | None) -> IRResolvedType:
+        resolved_name = self.resolve_type(expr.name.type)
+        if resolved_name is None:
+            raise ValueError()
+        expr.yield_type = self.unify_expr(expr.value, bound, bound_loc)
+        self.unify_type(expr.yield_type, resolved_name, expr.value.loc, expr.name.location)
+        return expr.yield_type
+
+    def unify_attr_assign(self, expr: IRAttrAssign, bound: IRResolvedType | None, bound_loc: Location | None) -> IRResolvedType:
+        resolved_object = self.unify_expr(expr.obj, None, None)
+        if not isinstance(resolved_object, IRStructType):
+            raise CompilerMessage(ErrorType.COMPILATION, f"Object must be a struct, is instead a {resolved_object}:", expr.loc)
+        try:
+            expr.index, field = next((index, field) for index, field in enumerate(resolved_object.struct.fields) if field.name == expr.attr)
+        except StopIteration:
+            raise CompilerMessage(ErrorType.COMPILATION, f"Object of type {resolved_object.struct.name} does not have a field named {expr.attr}:", expr.loc, [
+                                      CompilerMessage(ErrorType.NOTE, f"{resolved_object.struct.name} defined here:", resolved_object.struct.loc)
+                                  ]) from None
+
+        expr.yield_type = self.unify_expr(expr.value, bound, bound_loc)
+
+        self.unify_type(expr.yield_type, cast(IRResolvedType, field.type), expr.value.loc, field.loc)
+        return expr.yield_type
+
     def unify_type(self, yield_type: IRResolvedType | None, bound_type: IRResolvedType | None, yield_loc: Location, expected_loc: Location | None) -> tuple[IRResolvedType, IRResolvedType]:
         if yield_type is None and bound_type is None:
             raise ValueError()
@@ -332,7 +360,7 @@ class BidirectionalTypeInference:
                         CompilerMessage(ErrorType.NOTE, f"Expectation is derived from here:", expected_loc)
                     ])
                 else:
-                    raise CompilerMessage(ErrorType.COMPILATION, f"Could not unify types. Expected {bound_type}, got {yield_type}", yield_loc)
+                    raise CompilerMessage(ErrorType.COMPILATION, f"Types do not agree. Expected {bound_type}, got {yield_type}", yield_loc)
 
     def resolve_type(self, type: IRType) -> IRResolvedType | None:
         if isinstance(type, IRResolvedType):

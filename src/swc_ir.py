@@ -420,10 +420,22 @@ class IRIf(IRExpr):
 
 
 class IRAssign(IRExpr):
-    def __init__(self, name: IRValueDecl, value: IRExpr):
+    def __init__(self, name: IRValueDecl, op: str, value: IRExpr):
         super().__init__()
         self.name = name
+        self.op = op
         self.value = value
+
+
+class IRAttrAssign(IRExpr):
+    def __init__(self, obj: IRExpr, attr: str, op: str, value: IRExpr):
+        super().__init__()
+        self.obj = obj
+        self.attr = attr
+        self.op = op
+        self.value = value
+
+        self.index: int | None = None
 
 
 class IRBinaryExpr(IRExpr):

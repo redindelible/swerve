@@ -332,6 +332,10 @@ class ResolveNames:
             return IRNotExpr(self.resolve_expr(expr.right)).set_loc(expr.loc)
         elif isinstance(expr, ASTIdentExpr):
             return IRNameExpr(self.get_value(expr.ident, expr.loc)).set_loc(expr.loc)
+        elif isinstance(expr, ASTAssign):
+            return IRAssign(self.get_value(expr.name, expr.loc), expr.op, self.resolve_expr(expr.value)).set_loc(expr.loc)
+        elif isinstance(expr, ASTAttrAssign):
+            return IRAttrAssign(self.resolve_expr(expr.obj), expr.attr, expr.op, self.resolve_expr(expr.value)).set_loc(expr.loc)
         else:
             raise ValueError()
 

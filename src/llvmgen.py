@@ -133,6 +133,8 @@ class LLVMGen:
             return self.generate_if_expr(expr)
         elif isinstance(expr, IRBlock):
             return self.generate_block_expr(expr)
+        elif isinstance(expr, IRAttrAssign):
+            return self.generate_attr_assign(expr)
         else:
             raise ValueError(type(expr))
 
@@ -207,6 +209,13 @@ class LLVMGen:
             return self.unit
         else:
             return last_result
+
+    def generate_attr_assign(self, expr: IRAttrAssign) -> ir.Value:
+        object = self.generate_expr(expr.obj)
+        element_pointer = self.builder.gep(object, (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), expr.index),))
+        value = self.generate_expr(expr.value)
+        self.builder.store(value, element_pointer)
+        return value
 
     def generate_type(self, type: IRType) -> ir.Type:
         if not isinstance(type, IRResolvedType):
