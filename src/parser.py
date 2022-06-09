@@ -21,7 +21,7 @@ def parse_program(start: Path, import_dirs: list[Path]) -> ASTProgram:
         except Exception as err:
             raise CompilerMessage(ErrorType.PARSE, f"Could not read from file '{next_path}'", loc)
         source = Source(next_path, text)
-        file = ParseState(TokenStream(source), import_dirs).parse()
+        file = ParseState(TokenStream(source), import_dirs).parse(True if len(visited) == 0 else False)
         files.append(file)
         for top_level in file.top_levels:
             if isinstance(top_level, ASTImport):
@@ -96,7 +96,7 @@ class ParseState:
     def pop_loc(self) -> SourceLocation:
         return self._last_token.location.combine(self._start_location.pop())
 
-    def parse(self) -> ASTFile:
+    def parse(self, is_main: bool) -> ASTFile:
         top_levels = []
         while self.curr.type != TokenType.EOF:
             if self.match(TokenType.IMPORT):
@@ -105,7 +105,7 @@ class ParseState:
                 top_levels.append(self.parse_function())
             else:
                 top_levels.append(self.parse_struct())
-        return ASTFile(self.source.path, top_levels)
+        return ASTFile(self.source.path, top_levels, is_main)
 
     def parse_import(self) -> list[ASTImport]:
         self.expect(TokenType.IMPORT)

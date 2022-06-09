@@ -30,7 +30,6 @@ def main():
     except CompilerMessage as msg:
         msg.display(stderr)
         return
-    # program.pretty_print()
 
     try:
         program = resolve_names(program)

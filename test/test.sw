@@ -1,4 +1,4 @@
-import "std/std.sw"::putc
+import std::putc
 
 
 struct Holder[T, K] {

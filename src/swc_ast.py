@@ -49,9 +49,10 @@ class ASTProgram:
 
 
 class ASTFile:
-    def __init__(self, path: Path, top_levels: list[ASTTopLevel]):
+    def __init__(self, path: Path, top_levels: list[ASTTopLevel], is_main: bool):
         self.path = path
         self.top_levels = top_levels
+        self.is_main = is_main
 
     def pretty_print(self, printer: Printer):
         printer.print(f"File:")

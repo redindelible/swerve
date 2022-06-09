@@ -223,7 +223,7 @@ class ResolveNames:
         self.push(self.file_namespaces[file])
         for top_level in file.top_levels:
             if isinstance(top_level, ASTFunction):
-                program.functions.append(self.resolve_function(top_level))
+                program.functions.append(self.resolve_function(top_level, program if file.is_main else None))
             elif isinstance(top_level, ASTStruct):
                 self.resolve_struct(program, top_level)
         self.pop()
@@ -270,7 +270,7 @@ class ResolveNames:
 
         program.structs.append(type)
 
-    def resolve_function(self, function: ASTFunction) -> IRFunction:
+    def resolve_function(self, function: ASTFunction, program: IRProgram | None) -> IRFunction:
         ret_type = self.resolve_type(function.return_type)
 
         body_ns = self.push(Namespace())
@@ -280,7 +280,11 @@ class ResolveNames:
             params.append(IRParameter(param_decl, param.name, self.resolve_type(param.type)))
 
         body = self.resolve_body(function.body, self.pop())
-        return IRFunction(self.value_decls[function], function.name, params, ret_type, body)
+        func = IRFunction(self.value_decls[function], function.name, params, ret_type, body)
+
+        if function.name == "main" and program is not None:
+            program.main_func = func
+        return func
 
     def resolve_stmt(self, stmt: ASTStmt) -> IRStmt:
         if isinstance(stmt, ASTLetStmt) or isinstance(stmt, ASTVarStmt):

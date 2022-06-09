@@ -40,7 +40,14 @@ def find_vs_lib_path(platform: str) -> Path | None:
     items = sorted((name for name in current_path.iterdir() if name.name.isnumeric()), key=lambda p: int(p.name))
     if len(items) == 0:
         return None
-    current_path = items[-1] / "Community" / "VC"/ "Tools" / "MSVC"
+    current_path = items[-1]
+    for try_path in (current_path / next_trial for next_trial in ["Community", "Preview"]):
+        if try_path.exists() and try_path.is_dir():
+            current_path = try_path
+            break
+    else:
+        return None
+    current_path = current_path / "VC" / "Tools" / "MSVC"
     if not current_path.exists() or not current_path.is_dir():
         return None
 

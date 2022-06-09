@@ -338,6 +338,8 @@ class IRProgram:
         self.functions = functions
         self.structs = structs
 
+        self.main_func: IRFunction | None = None
+
 
 class IRStruct(IRNode):
     def __init__(self, type_decl: IRTypeDecl, constructor: IRValueDecl, name: str, supertraits: list[IRType], fields: list[IRField], methods: list[IRMethod]):

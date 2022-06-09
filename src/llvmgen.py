@@ -6,6 +6,8 @@ from swc_ir import *
 from llvmlite import ir
 from llvmlite import binding as llvm
 
+from random import shuffle
+
 
 def generate_llvm(program: IRProgram) -> ir.Module:
     llvm.initialize()
@@ -16,6 +18,7 @@ def generate_llvm(program: IRProgram) -> ir.Module:
     gen.load_external_functions()
     gen.load_structs()
     gen.generate_functions()
+    gen.finalize()
     return gen.module
 
 
@@ -43,11 +46,23 @@ class LLVMGen:
         self.builder = ir.IRBuilder()
         self.decl_values: dict[IRValueDecl, ir.Value] = {}
 
+        self.counter: list[int] = list(range(0, 1000000))
+        shuffle(self.counter)
+
+    def new_name(self, pattern: str) -> str:
+        num = self.counter.pop()
+        return f"{pattern}_{num:0>6}"
+
     def load_external_functions(self):
         self.external_functions["malloc"] = ir.Function(self.module, ir.FunctionType(self.void_p_type, [self.integer_types[64]]), "malloc")
 
     def size_of(self, type: ir.Type) -> int:
         return type.get_abi_size(self.target_data)
+
+    def finalize(self):
+        main = ir.Function(self.module, ir.FunctionType(self.integer_types[64], []), "main")
+        builder = ir.IRBuilder(main.append_basic_block("entry"))
+        builder.ret(builder.call(self.decl_values[self.program.main_func.decl], main.args))
 
     def load_structs(self):
         for struct in self.program.structs:
@@ -66,7 +81,7 @@ class LLVMGen:
 
     def generate_constructor(self, struct: IRStruct, struct_type: ir.PointerType):
         constructor_type = ir.FunctionType(struct_type, [self.generate_type(field.type) for field in struct.fields])
-        constructor = self.decl_values[struct.constructor] = ir.Function(self.module, constructor_type, f"{struct.name}_constructor")
+        constructor = self.decl_values[struct.constructor] = ir.Function(self.module, constructor_type, self.new_name(f"{struct.name}_constructor"))
 
         self.builder = ir.IRBuilder(constructor.append_basic_block("entry"))
 
@@ -86,7 +101,7 @@ class LLVMGen:
     def generate_function(self, function: IRFunction):
         ir_func_type = function.function_type
         func_type = ir.FunctionType(self.generate_type(ir_func_type.ret_type), [self.generate_type(param_type.type) for param_type in ir_func_type.param_types])
-        func = ir.Function(self.module, func_type, function.name)   # TODO mangling
+        func = ir.Function(self.module, func_type, self.new_name(function.name))
 
         self.decl_values[function.decl] = func
         for ir_arg, llvm_arg in zip(function.parameters, func.args):
@@ -227,7 +242,7 @@ class LLVMGen:
     def generate_lambda(self, expr: IRLambda) -> ir.Value:
         ir_func_type = cast(IRFunctionType, expr.yield_type)
         func_type = ir.FunctionType(self.generate_type(ir_func_type.ret_type), [self.generate_type(param_type.type) for param_type in ir_func_type.param_types])
-        func = ir.Function(self.module, func_type, "lambda")  # TODO VERY TODO mangling
+        func = ir.Function(self.module, func_type, self.new_name("lambda"))
 
         # self.decl_values[expr.decl] = func
         for ir_arg, llvm_arg in zip(expr.parameters, func.args):
