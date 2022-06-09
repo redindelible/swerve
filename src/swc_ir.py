@@ -89,9 +89,15 @@ class IRResolvedType(IRType):
     def __str__(self):
         raise NotImplementedError()
 
+    def __eq__(self, other: IRResolvedType):
+        raise NotImplementedError()
+
+    def __hash__(self):
+        raise NotImplementedError()
+
 
 class IRFunctionType(IRResolvedType):
-    def __init__(self, param_types: list[tuple[IRResolvedType, Location]], ret_type: IRResolvedType):
+    def __init__(self, param_types: list[IRParameterType], ret_type: IRResolvedType):
         super().__init__()
         self.param_types = param_types
         self.ret_type = ret_type
@@ -118,9 +124,15 @@ class IRFunctionType(IRResolvedType):
     def __str__(self):
         return f"({', '.join(str(param) for param in self.param_types)}) -> {self.ret_type}"
 
+    def __eq__(self, other: IRFunctionType):
+        return type(other) == IRFunctionType and self.param_types == other.param_types and self.ret_type == other.ret_type
+
+    def __hash__(self):
+        return hash((tuple(self.param_types), self.ret_type))
+
 
 class IRGenericFunctionType(IRFunctionType):
-    def __init__(self, type_vars: list[IRTypeVariable], param_types: list[tuple[IRResolvedType, Location]], ret_type: IRResolvedType,
+    def __init__(self, type_vars: list[IRTypeVariable], param_types: list[IRParameterType], ret_type: IRResolvedType,
                  callback: Callable[[list[IRResolvedType], Location], tuple[IRFunctionType, IRExpr]]):
         super().__init__(param_types, ret_type)
         self.type_vars = type_vars
@@ -134,6 +146,20 @@ class IRGenericFunctionType(IRFunctionType):
 
     def is_concrete(self) -> bool:
         return False
+
+    def __eq__(self, other: IRGenericFunctionType):
+        return type(other) == IRGenericFunctionType and self.param_types == other.param_types and self.ret_type == other.ret_type and self.type_vars == other.type_vars
+
+    def __hash__(self):
+        return hash((tuple(self.param_types), self.ret_type, tuple(self.type_vars)))
+
+class IRParameterType:
+    def __init__(self, type: IRResolvedType, loc: Location):
+        self.type = type
+        self.loc = loc
+
+    def __eq__(self, other):
+        return isinstance(other, IRParameterType) and self.type == other.type
 
 
 class IRStructType(IRResolvedType):
@@ -150,6 +176,12 @@ class IRStructType(IRResolvedType):
     def __str__(self):
         return f"struct '{self.struct.name}'"
 
+    def __eq__(self, other: IRStructType):
+        return type(other) == IRStructType and other.struct is self.struct
+
+    def __hash__(self):
+        return hash(self.struct)
+
 
 class IRGenericStructType(IRResolvedType):
     def __init__(self, generic: IRGenericStruct):
@@ -164,6 +196,12 @@ class IRGenericStructType(IRResolvedType):
 
     def __str__(self):
         return f"struct '{self.generic.name}'"
+
+    def __eq__(self, other: IRGenericStructType):
+        return type(other) == IRGenericStructType and other.generic is self.generic
+
+    def __hash__(self):
+        return hash(self.generic)
 
 
 class IRGenericType(IRResolvedType):
@@ -181,6 +219,12 @@ class IRGenericType(IRResolvedType):
 
     def __str__(self):
         return f"{self.generic}[{', '.join(str(arg) for arg in self.type_parameters)}]"
+
+    def __eq__(self, other: IRGenericType):
+        return type(other) == IRGenericType and self.generic is other.generic and self.type_parameters == other.type_parameters
+
+    def __hash__(self):
+        return hash((self.generic, tuple(self.type_parameters)))
 
 
 class IRIntegerType(IRResolvedType):
@@ -200,6 +244,12 @@ class IRIntegerType(IRResolvedType):
         else:
             return f"i{self.bits}"
 
+    def __eq__(self, other: IRIntegerType):
+        return type(other) == IRIntegerType and self.bits == other.bits
+
+    def __hash__(self):
+        return hash((type(self), self.bits))
+
 
 class IRStringType(IRResolvedType):
     def is_subtype(self, bound: IRResolvedType) -> bool:
@@ -210,6 +260,12 @@ class IRStringType(IRResolvedType):
 
     def __str__(self):
         return "str"
+
+    def __eq__(self, other: IRStringType):
+        return type(other) == IRStringType
+
+    def __hash__(self):
+        return hash(type(self))
 
 
 class IRBoolType(IRResolvedType):
@@ -222,6 +278,12 @@ class IRBoolType(IRResolvedType):
     def __str__(self):
         return "bool"
 
+    def __eq__(self, other: IRBoolType):
+        return type(other) == IRBoolType
+
+    def __hash__(self):
+        return hash(type(self))
+
 
 class IRUnitType(IRResolvedType):
     def is_subtype(self, bound: IRResolvedType) -> bool:
@@ -232,6 +294,12 @@ class IRUnitType(IRResolvedType):
 
     def __str__(self):
         return "unit"
+
+    def __eq__(self, other: IRUnitType):
+        return type(other) == IRUnitType
+
+    def __hash__(self):
+        return hash(type(self))
 
 
 class IRTypeVarType(IRResolvedType):
@@ -247,6 +315,12 @@ class IRTypeVarType(IRResolvedType):
 
     def __str__(self):
         return self.type_var.name
+
+    def __eq__(self, other: IRTypeVarType):
+        return type(other) == IRTypeVarType and self.type_var is other.type_var
+
+    def __hash__(self):
+        return hash(self.type_var)
 
 
 class IRProgram:

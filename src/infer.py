@@ -44,11 +44,11 @@ class BidirectionalTypeInference:
             for field in struct.fields:
                 if field.type in type_var_replacements:
                     field.type = type_var_replacements[field.type]
-                    field.loc = loc
+                    # field.loc = loc
 
             struct.type_decl.type = IRStructType(struct).set_loc(loc)
             # noinspection PyTypeChecker
-            struct.constructor.type = IRFunctionType([(field.type, field.loc) for field in struct.fields], struct.type_decl.type).set_loc(loc)
+            struct.constructor.type = IRFunctionType([IRParameterType(field.type, field.loc) for field in struct.fields], struct.type_decl.type).set_loc(loc)
 
             self.program.structs.append(struct)
             generic.reifications[tuple(arguments)] = struct
@@ -77,12 +77,12 @@ class BidirectionalTypeInference:
         if isinstance(struct, IRGenericStruct):
             for type_var in struct.type_vars:
                 type_var.type_decl.type = IRTypeVarType(type_var)
-        field_types: list[tuple[IRResolvedType, Location]] = []
+        field_types: list[IRParameterType] = []
         for field in struct.fields:
             field.type = resolved_type = self.resolve_type(field.type)
             if resolved_type is None:
                 raise ValueError()
-            field_types.append((resolved_type, field.loc))
+            field_types.append(IRParameterType(resolved_type, field.loc))
 
         if isinstance(struct, IRGenericStruct):
             def callback(type_args: list[IRResolvedType], loc: Location) -> tuple[IRFunctionType, IRExpr]:
@@ -96,12 +96,12 @@ class BidirectionalTypeInference:
             struct.constructor.type = IRFunctionType(field_types, struct.type_decl.type).set_loc(struct.loc)
 
     def infer_function_type(self, function: IRFunction):
-        param_types: list[tuple[IRResolvedType, Location]] = []
+        param_types: list[IRParameterType] = []
         for param in function.parameters:
             resolved = self.resolve_type(param.type)
             if resolved is None:
                 raise ValueError()
-            param_types.append((resolved, param.loc))
+            param_types.append(IRParameterType(resolved, param.loc))
             param.type = resolved
             param.decl.type = resolved
 
