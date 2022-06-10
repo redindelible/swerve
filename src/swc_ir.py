@@ -17,9 +17,14 @@ class IRNode:
 
 
 class IRValueDecl:
-    def __init__(self, type: IRType, location: Location):
+    def __init__(self, type: IRType, location: Location, is_runtime: bool):
         self.type = type
         self.location = location
+        self.is_runtime = is_runtime
+
+        self.put_in_closure: bool = False
+        self.closure_index: int = 0
+        self.in_block: IRBlock | None = None
 
 
 class IRTypeDecl:
@@ -482,9 +487,13 @@ class IRExpr(IRNode):
 
 
 class IRBlock(IRExpr):
-    def __init__(self, body: list[IRStmt]):
+    def __init__(self, body: list[IRStmt], declared: list[IRValueDecl]):
         super().__init__()
         self.body = body
+
+        self.declared = declared
+        for decl in self.declared:
+            decl.in_block = self
 
     def always_returns(self) -> bool:
         if len(self.body) == 0:
@@ -525,8 +534,9 @@ class IRAttrAssign(IRExpr):
 
 
 class IRLambda(IRExpr):
-    def __init__(self, parameters: list[IRParameter], ret_type: IRType, expr: IRExpr):
+    def __init__(self, exterior_names: list[IRValueDecl], parameters: list[IRParameter], ret_type: IRType, expr: IRExpr):
         super().__init__()
+        self.exterior_names = exterior_names
         self.parameters = parameters
         self.ret_type = ret_type
         self.expr = expr

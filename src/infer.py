@@ -32,7 +32,7 @@ class BidirectionalTypeInference:
         else:
             struct = IRStruct(
                 IRTypeDecl(IRUnresolvedUnknownType(), generic.type_decl.location),
-                IRValueDecl(IRUnresolvedUnknownType(), generic.constructor.location),
+                IRValueDecl(IRUnresolvedUnknownType(), generic.constructor.location, False),
                 f"{generic.name}[{', '.join(str(arg) for arg in arguments)}]",
                 generic.supertraits,
                 [IRField(field.name, field.type).set_loc(field.loc) for field in generic.fields],
@@ -182,11 +182,11 @@ class BidirectionalTypeInference:
             raise ValueError(type(expr))
 
     def unify_integer_expr(self, expr: IRIntegerExpr, bound: IRResolvedType | None, bound_loc: Location | None) -> IRResolvedType:
-        expr.yield_type, _ = self.unify_type(IRIntegerType(64), bound, expr.loc, bound_loc)
+        expr.yield_type, _ = self.unify_type(IRIntegerType(64).set_loc(expr.loc), bound, expr.loc, bound_loc)
         return expr.yield_type
 
     def unify_string_expr(self, expr: IRStringExpr, bound: IRResolvedType | None, bound_loc: Location | None) -> IRResolvedType:
-        expr.yield_type, _ = self.unify_type(IRStringType(), bound, expr.loc, bound_loc)
+        expr.yield_type, _ = self.unify_type(IRStringType().set_loc(expr.loc), bound, expr.loc, bound_loc)
         return expr.yield_type
 
     def unify_name_expr(self, expr: IRNameExpr, bound: IRResolvedType | None, bound_loc: Location | None) -> IRResolvedType:

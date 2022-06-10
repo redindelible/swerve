@@ -13,10 +13,13 @@ def resolve_names(program: ASTProgram):
 
 
 class Namespace:
-    def __init__(self):
+    def __init__(self, *, is_lambda: bool = False):
         self.value_names: dict[str, IRValueDecl] = {}
         self.type_names: dict[str, IRTypeDecl] = {}
         self.namespace_names: dict[str, Namespace] = {}
+
+        self.is_lambda = is_lambda
+        self.exterior_names: list[IRValueDecl] = []
 
         self.not_yet_imported: set[str] = set()
 
@@ -92,6 +95,7 @@ class ResolveNames:
 
         self.program_namespace = Namespace()
         self.namespaces: list[Namespace] = []
+        self.blocks: list[IRBlock] = []
 
         self.file_namespaces: dict[ASTFile, Namespace] = {}
 
@@ -110,6 +114,10 @@ class ResolveNames:
     def curr_ns(self) -> Namespace:
         return self.namespaces[-1]
 
+    @property
+    def curr_block(self) -> IRBlock:
+        return self.blocks[-1]
+
     def get_type(self, name: str, loc: Location) -> IRTypeDecl:
         for ns in reversed(self.namespaces):
             if ns.has_type(name):
@@ -118,9 +126,16 @@ class ResolveNames:
             raise CompilerMessage(ErrorType.COMPILATION, f"Name '{name}' does not exist for a type in this scope", loc)
 
     def get_value(self, name: str, loc: Location) -> IRValueDecl:
+        lambdas_to_add_to: list[Namespace] = []
         for ns in reversed(self.namespaces):
             if ns.has_value(name):
-                return ns.get_value(name, loc)
+                value = ns.get_value(name, loc)
+                if value.is_runtime:
+                    for lambda_ in lambdas_to_add_to:
+                        lambda_.exterior_names.append(value)
+                return value
+            if ns.is_lambda:
+                lambdas_to_add_to.append(ns)
         else:
             raise CompilerMessage(ErrorType.COMPILATION, f"Name '{name}' does not exist for a value in this scope", loc)
 
@@ -146,19 +161,19 @@ class ResolveNames:
         self.file_namespaces[file] = self.pop()
 
     def collect_function(self, function: ASTFunction):
-        decl = self.curr_ns.declare_value(function.name, IRValueDecl(IRUnresolvedUnknownType(), function.loc))
+        decl = self.curr_ns.declare_value(function.name, IRValueDecl(IRUnresolvedUnknownType(), function.loc, False))
         self.value_decls[function] = decl
 
     def collect_struct(self, struct: ASTStruct):
         type_decl = self.curr_ns.declare_type(struct.name, IRTypeDecl(IRUnresolvedUnknownType(), struct.loc))
         struct_ns = self.push(Namespace())
         for method in struct.methods:
-            decl = self.curr_ns.declare_value(method.name, IRValueDecl(IRUnresolvedUnknownType(), method.loc))
+            decl = self.curr_ns.declare_value(method.name, IRValueDecl(IRUnresolvedUnknownType(), method.loc, False))
         self.pop()
         self.struct_type_decls[struct] = type_decl
 
         # constructor
-        decl = self.curr_ns.declare_value(struct.name, IRValueDecl(IRUnresolvedUnknownType(), struct.loc))
+        decl = self.curr_ns.declare_value(struct.name, IRValueDecl(IRUnresolvedUnknownType(), struct.loc, False))
         self.value_decls[struct] = decl
 
     def resolve_imports(self):
@@ -255,10 +270,10 @@ class ResolveNames:
             body_ns = self.push(Namespace())
             params = []
             if method.self_name is not None:
-                self_decl = self.curr_ns.declare_value(method.self_name, IRValueDecl(IRUnresolvedUnknownType(), BuiltinLocation()))
+                self_decl = self.curr_ns.declare_value(method.self_name, IRValueDecl(IRUnresolvedUnknownType(), BuiltinLocation(), True))
                 params.append(IRParameter(self_decl, method.name, IRUnresolvedNameType(struct_type_decl)))
             for param in method.parameters:
-                param_decl = self.curr_ns.declare_value(param.name, IRValueDecl(IRUnresolvedUnknownType(), param.loc))
+                param_decl = self.curr_ns.declare_value(param.name, IRValueDecl(IRUnresolvedUnknownType(), param.loc, True))
                 params.append(IRParameter(param_decl, param.name, self.resolve_type(param.type)))
 
             body = self.resolve_body(method.body, self.pop())
@@ -276,7 +291,7 @@ class ResolveNames:
         body_ns = self.push(Namespace())
         params = []
         for param in function.parameters:
-            param_decl = self.curr_ns.declare_value(param.name, IRValueDecl(IRUnresolvedUnknownType(), param.loc))
+            param_decl = self.curr_ns.declare_value(param.name, IRValueDecl(IRUnresolvedUnknownType(), param.loc, True))
             params.append(IRParameter(param_decl, param.name, self.resolve_type(param.type)))
 
         body = self.resolve_body(function.body, self.pop())
@@ -288,24 +303,24 @@ class ResolveNames:
 
     def resolve_stmt(self, stmt: ASTStmt) -> IRStmt:
         if isinstance(stmt, ASTLetStmt) or isinstance(stmt, ASTVarStmt):
-            decl = self.curr_ns.declare_value(stmt.name, IRValueDecl(IRUnresolvedUnknownType(), stmt.loc))
+            decl = self.curr_ns.declare_value(stmt.name, IRValueDecl(IRUnresolvedUnknownType(), stmt.loc, True))
             if stmt.type is None:
                 type = IRUnresolvedUnknownType()
             else:
                 type = self.resolve_type(stmt.type)
-            return IRDeclStmt(decl, type, self.resolve_expr(stmt.init))
+            return IRDeclStmt(decl, type, self.resolve_expr(stmt.init)).set_loc(stmt.loc)
         elif isinstance(stmt, ASTExprStmt):
-            return IRExprStmt(self.resolve_expr(stmt.expr))
+            return IRExprStmt(self.resolve_expr(stmt.expr)).set_loc(stmt.loc)
         elif isinstance(stmt, ASTWhileStmt):
-            return IRWhileStmt(self.resolve_expr(stmt.cond), self.resolve_expr(stmt.body))
+            return IRWhileStmt(self.resolve_expr(stmt.cond), self.resolve_expr(stmt.body)).set_loc(stmt.loc)
         elif isinstance(stmt, ASTForStmt):
             self.push(Namespace())
-            decl = self.curr_ns.declare_value(stmt.iter_var, IRValueDecl(IRUnresolvedUnknownType(), stmt.iterator.loc))
-            ir_stmt = IRForStmt(decl, self.resolve_expr(stmt.iterator), self.resolve_expr(stmt.body))
+            decl = self.curr_ns.declare_value(stmt.iter_var, IRValueDecl(IRUnresolvedUnknownType(), stmt.iterator.loc, True))
+            ir_stmt = IRForStmt(decl, self.resolve_expr(stmt.iterator), self.resolve_expr(stmt.body)).set_loc(stmt.loc)
             self.pop()
             return ir_stmt
         elif isinstance(stmt, ASTReturnStmt):
-            return IRReturnStmt(self.resolve_expr(stmt.expr))
+            return IRReturnStmt(self.resolve_expr(stmt.expr)).set_loc(stmt.loc)
         else:
             raise ValueError()
 
@@ -344,15 +359,19 @@ class ResolveNames:
             else:
                 ret_type = IRUnresolvedUnknownType()
 
-            expr_ns = self.push(Namespace())
+            expr_ns = self.push(Namespace(is_lambda=True))
             params = []
             for param in expr.parameters:
-                param_decl = self.curr_ns.declare_value(param.name, IRValueDecl(IRUnresolvedUnknownType(), param.loc))
+                param_decl = self.curr_ns.declare_value(param.name, IRValueDecl(IRUnresolvedUnknownType(), param.loc, True))
                 params.append(IRParameter(param_decl, param.name, self.resolve_type(param.type) if param.type is not None else IRUnresolvedUnknownType()))
 
             expr_expr = self.resolve_expr(expr.expr)
-            self.pop()
-            return IRLambda(params, ret_type, expr_expr).set_loc(expr.loc)
+
+            exterior_names = self.pop().exterior_names
+            for exterior_name in exterior_names:
+                exterior_name.put_in_closure = True
+
+            return IRLambda(exterior_names, params, ret_type, expr_expr).set_loc(expr.loc)
         else:
             raise ValueError()
 
@@ -364,8 +383,8 @@ class ResolveNames:
         stmts = []
         for stmt in body.stmts:
             stmts.append(self.resolve_stmt(stmt))
-        self.pop()
-        return IRBlock(stmts).set_loc(body.loc)
+        ns = self.pop()
+        return IRBlock(stmts, list(ns.value_names.values())).set_loc(body.loc)
 
     def resolve_type(self, type: ASTType) -> IRType:
         if isinstance(type, ASTTypeIdent):
