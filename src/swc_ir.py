@@ -534,12 +534,12 @@ class IRAttrAssign(IRExpr):
 
 
 class IRLambda(IRExpr):
-    def __init__(self, exterior_names: list[IRValueDecl], parameters: list[IRParameter], ret_type: IRType, expr: IRExpr):
+    def __init__(self, exterior_names: list[IRValueDecl], parameters: list[IRParameter], ret_type: IRType, body: IRBlock):
         super().__init__()
         self.exterior_names = exterior_names
         self.parameters = parameters
         self.ret_type = ret_type
-        self.expr = expr
+        self.body: IRBlock = body
 
 
 class IRBinaryExpr(IRExpr):

@@ -377,7 +377,7 @@ class BidirectionalTypeInference:
                 param.type, _ = self.unify_type(self.resolve_type(param.type), expected_param.type, param.loc, expected_param.loc)
                 param.decl.type = param.type
             expr.ret_type, _ = self.unify_type(self.resolve_type(expr.ret_type), bound.ret_type, expr.loc, bound.loc)
-            self.unify_expr(expr.expr, expr.ret_type, bound.loc)
+            self.unify_expr(expr.body, expr.ret_type, bound.loc)
 
             expr.yield_type = IRFunctionType([IRParameterType(param.type, param.loc) for param in expr.parameters], expr.ret_type)
         else:
@@ -389,7 +389,7 @@ class BidirectionalTypeInference:
             expr.ret_type = self.resolve_type(expr.ret_type)
             if expr.ret_type is None:
                 raise CompilerMessage(ErrorType.COMPILATION, f"Type of return type could not be inferred", expr.loc)
-            self.unify_expr(expr.expr, expr.ret_type, expr.loc)
+            self.unify_expr(expr.body, expr.ret_type, expr.loc)
 
             expr.yield_type = IRFunctionType([IRParameterType(param.type, param.loc) for param in expr.parameters], expr.ret_type)
             self.unify_type(expr.yield_type, bound, expr.loc, bound_loc)

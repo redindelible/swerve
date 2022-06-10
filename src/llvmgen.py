@@ -136,6 +136,7 @@ class LLVMGen:
                 closed.append(decl)
                 decl.closure_index = count
                 count += 1
+        # print(function.body.declared)
         if len(closed) > 0:
             closure_type = ir.LiteralStructType([self.void_p_type] + [self.generate_type(var.type) for var in closed])
             closure = self.builder.call(self.external_functions["malloc"], [ir.Constant(self.integer_types[64], self.size_of(closure_type))])
@@ -180,6 +181,7 @@ class LLVMGen:
             raise ValueError(type(stmt))
 
     def generate_decl_stmt(self, stmt: IRDeclStmt):
+        # print(stmt.decl)
         if stmt.decl.put_in_closure:
             self.decl_values[stmt.decl] = self.builder.gep(self.closures[-1].value, [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), stmt.decl.closure_index)])
         else:
@@ -249,9 +251,10 @@ class LLVMGen:
                 else:
                     raise ValueError()
             else:
+                print(type(name), expr.name)
                 return self.builder.load(name)
         else:
-            raise ValueError()
+            raise ValueError(name, expr.name)
 
     def generate_call_expr(self, expr: IRCallExpr) -> ir.Value:
         fn_struct_p = self.generate_expr(expr.callee)
@@ -299,9 +302,8 @@ class LLVMGen:
         if expr.else_do is None:
             before_block = self.builder.block
             with self.builder.if_then(cond) as then:
-                with then:
-                    then_block = self.builder.block
-                    then_result = self.generate_expr(expr.then_do)
+                then_block = self.builder.block
+                then_result = self.generate_expr(expr.then_do)
             result = self.builder.phi(self.generate_type(expr.yield_type))
             result.add_incoming(then_result, then_block)
             result.add_incoming(self.unit, before_block)
@@ -332,8 +334,8 @@ class LLVMGen:
             closure_type = ir.LiteralStructType([self.void_p_type] + [self.generate_type(var.type) for var in closed])
             closure = self.builder.call(self.external_functions["malloc"], [ir.Constant(self.integer_types[64], self.size_of(closure_type))])
             closure = self.builder.bitcast(closure, ir.PointerType(closure_type))
+            self.builder.store(self.recent_closure, self.gep(closure, [0, 0]))
             self.recent_closure.append(closure)
-            self.builder.store(self.closures[-1], self.gep(closure, [0, 0]))
             self.closures.append(Closure(closure, closure_type, expr))
 
         last_result = None
@@ -405,7 +407,7 @@ class LLVMGen:
                         value = self.builder.srem(self.builder.load(slot_ptr), value)
                 self.builder.store(value, slot_ptr)
             else:
-                return self.builder.load(name)
+                self.builder.store(value, name)
         else:
             raise ValueError()
 
@@ -416,14 +418,50 @@ class LLVMGen:
         func_type = ir.FunctionType(self.generate_type(ir_func_type.ret_type), [self.void_p_type] + [self.generate_type(param_type.type) for param_type in ir_func_type.param_types])
         func = ir.Function(self.module, func_type, self.new_name("lambda"))
 
-        for ir_arg, llvm_arg in zip(expr.parameters, func.args[1:]):
-            self.decl_values[ir_arg.decl] = llvm_arg
-
         entry_block = func.append_basic_block("entry")
         prev_builder, self.builder = self.builder, ir.IRBuilder(entry_block)
 
         self.recent_closure.append(func.args[0])
-        result = self.generate_expr(expr.expr)
+
+        ##############
+        old_block, self.current_block = self.current_block, expr.body
+
+        count = 1
+        closed: list[IRValueDecl] = []
+        for decl in expr.body.declared:
+            if decl.put_in_closure:
+                closed.append(decl)
+                decl.closure_index = count
+                count += 1
+        if len(closed) > 0:
+            closure_type = ir.LiteralStructType([self.void_p_type] + [self.generate_type(var.type) for var in closed])
+            closure = self.builder.call(self.external_functions["malloc"], [ir.Constant(self.integer_types[64], self.size_of(closure_type))])
+            closure = self.builder.bitcast(closure, ir.PointerType(closure_type))
+            self.builder.store(self.recent_closure, self.gep(closure, [0, 0]))
+            self.recent_closure.append(closure)
+            self.closures.append(Closure(closure, closure_type, expr.body))
+
+        for ir_arg, llvm_arg in zip(expr.parameters, func.args[1:]):
+            if ir_arg.decl.put_in_closure:
+                closure_ptr = self.builder.gep(self.closures[-1].value, [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), ir_arg.decl.closure_index)])
+                self.builder.store(llvm_arg, closure_ptr)
+            else:
+                arg_slot = self.decl_values[ir_arg.decl] = self.builder.alloca(self.generate_type(ir_arg.type))
+                self.builder.store(llvm_arg, arg_slot)
+
+        result = self.unit
+        for stmt in expr.body.body:
+            if isinstance(stmt, IRExprStmt):
+                result = self.generate_expr(stmt.expr)
+            else:
+                self.generate_stmt(stmt)
+
+        self.current_block = old_block
+        if len(closed) > 0:
+            self.closures.pop()
+            self.recent_closure.pop()
+        #####
+
         if self.builder.block.terminator is None:
             self.builder.ret(result)
         self.builder = prev_builder
@@ -434,7 +472,7 @@ class LLVMGen:
         lambda_obj = self.builder.bitcast(lambda_obj, lambda_obj_type)
 
         self.builder.store(func, self.gep(lambda_obj, [0, 0]))
-        self.builder.store(self.builder.bitcast(self.closures[-1].value, self.void_p_type), self.gep(lambda_obj, [0, 1]))
+        self.builder.store(self.builder.bitcast(self.recent_closure[-1], self.void_p_type), self.gep(lambda_obj, [0, 1]))
 
         return lambda_obj
 

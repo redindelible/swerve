@@ -294,8 +294,11 @@ class ResolveNames:
             param_decl = self.curr_ns.declare_value(param.name, IRValueDecl(IRUnresolvedUnknownType(), param.loc, True))
             params.append(IRParameter(param_decl, param.name, self.resolve_type(param.type)))
 
+        # print(body_ns, body_ns.value_names)
         body = self.resolve_body(function.body, self.pop())
         func = IRFunction(self.value_decls[function], function.name, params, ret_type, body)
+
+        # print(body_ns, body_ns.value_names, body.declared)
 
         if function.name == "main" and program is not None:
             program.main_func = func
@@ -304,6 +307,7 @@ class ResolveNames:
     def resolve_stmt(self, stmt: ASTStmt) -> IRStmt:
         if isinstance(stmt, ASTLetStmt) or isinstance(stmt, ASTVarStmt):
             decl = self.curr_ns.declare_value(stmt.name, IRValueDecl(IRUnresolvedUnknownType(), stmt.loc, True))
+            # print("when made", decl, "in", self.curr_ns)
             if stmt.type is None:
                 type = IRUnresolvedUnknownType()
             else:
@@ -359,6 +363,7 @@ class ResolveNames:
             else:
                 ret_type = IRUnresolvedUnknownType()
 
+            # TODO make returns work in a lambda
             expr_ns = self.push(Namespace(is_lambda=True))
             params = []
             for param in expr.parameters:
@@ -367,11 +372,12 @@ class ResolveNames:
 
             expr_expr = self.resolve_expr(expr.expr)
 
-            exterior_names = self.pop().exterior_names
+            self.pop()
+            exterior_names = expr_ns.exterior_names
             for exterior_name in exterior_names:
                 exterior_name.put_in_closure = True
 
-            return IRLambda(exterior_names, params, ret_type, expr_expr).set_loc(expr.loc)
+            return IRLambda(exterior_names, params, ret_type, IRBlock([IRExprStmt(expr_expr).set_loc(expr.expr.loc)], list(expr_ns.value_names.values())).set_loc(expr.expr.loc)).set_loc(expr.loc)
         else:
             raise ValueError()
 
@@ -384,6 +390,7 @@ class ResolveNames:
         for stmt in body.stmts:
             stmts.append(self.resolve_stmt(stmt))
         ns = self.pop()
+        # print(ns.value_names)
         return IRBlock(stmts, list(ns.value_names.values())).set_loc(body.loc)
 
     def resolve_type(self, type: ASTType) -> IRType:

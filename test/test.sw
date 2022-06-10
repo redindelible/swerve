@@ -1,15 +1,16 @@
-import std::putc
-
-
-fn call_thrice(func: () -> int) -> () {
-    func();
-    func();
-    func();
+fn for_f(i:int, high:int, body: (int) -> int) -> () {
+    body(i);
+    if (i < high - 1) {
+        i = i + 1;
+        for_f(i, high, body);
+    }
 }
 
 
 fn main() -> int {
-    let a := 0;
-    call_thrice(|| { a = a + 1; });
+    let a: int = 0;
+
+    for_f(0, 10, |x| a = a + x);
+
     return a;
 }
