@@ -84,10 +84,6 @@ class BidirectionalTypeInference:
             self.infer_struct_body(struct)
             self.infer_struct_methods(struct)
 
-        if is_concrete:
-            for method in struct.methods:
-                self.program.functions.append(method.function)
-
         self.program.structs.append(struct)
         return struct
 
@@ -198,6 +194,10 @@ class BidirectionalTypeInference:
     def infer_struct_methods(self, struct: IRStruct):
         for method in struct.methods:
             self.infer_function_body(method.function)
+
+        if not isinstance(struct, IRGenericStruct):
+            for method in struct.methods:
+                self.program.functions.append(method.function)
 
     def infer_function_type(self, function: IRFunction):
         if isinstance(function, IRGenericFunction):

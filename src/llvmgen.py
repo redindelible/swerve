@@ -198,7 +198,6 @@ class LLVMGen:
             raise ValueError(type(stmt))
 
     def generate_decl_stmt(self, stmt: IRDeclStmt):
-        # print(stmt.decl)
         if stmt.decl.put_in_closure:
             self.decl_values[stmt.decl] = self.builder.gep(self.closures[-1].value, [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), stmt.decl.closure_index)])
         else:

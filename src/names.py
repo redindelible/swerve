@@ -287,7 +287,10 @@ class ResolveNames:
             methods.append(method)
         self.pop()
 
-        type = IRGenericStruct(struct_type_decl, self.value_decls[struct], struct.name, type_vars, supertraits, fields, methods, {})
+        if len(type_vars) > 0:
+            type = IRGenericStruct(struct_type_decl, self.value_decls[struct], struct.name, type_vars, supertraits, fields, methods, {})
+        else:
+            type = IRStruct(struct_type_decl, self.value_decls[struct], struct.name, supertraits, fields, methods)
         struct_type_decl.type = type
 
         program.structs.append(type)
