@@ -444,14 +444,13 @@ class BidirectionalTypeInference:
     def unify_block_expr(self, expr: IRBlock, bound: IRResolvedType | None, bound_loc: Location | None) -> IRResolvedType:
         for stmt in expr.body:
             self.infer_stmt(stmt)
-        expr.yield_type = IRUnitType()
-        if len(expr.body) > 0:
-            last_stmt = expr.body[-1]
-            if isinstance(last_stmt, IRExprStmt):
-                expr.yield_type = last_stmt.expr.yield_type
-            yield_loc = last_stmt.loc
-        else:
+        if expr.return_unit:
+            expr.yield_type = IRUnitType()
             yield_loc = expr.loc
+        else:
+            last_stmt = cast(IRExprStmt, expr.body[-1])
+            expr.yield_type = last_stmt.expr.yield_type
+            yield_loc = last_stmt.loc
         self.unify_type(expr.yield_type, bound, yield_loc, bound_loc)
         return expr.yield_type
 
@@ -561,7 +560,7 @@ class SubstituteNodes:
         new_stmts = []
         for stmt in block.body:
             new_stmts.append(self.substitute_stmt(stmt))
-        return IRBlock(new_stmts, [self.value_decl[decl] for decl in self.value_decl])
+        return IRBlock(new_stmts, [self.value_decl[decl] for decl in self.value_decl], block.return_unit)
 
     def substitute_stmt(self, stmt: IRStmt) -> IRStmt:
         if isinstance(stmt, IRExprStmt):
@@ -594,7 +593,7 @@ class SubstituteNodes:
         elif isinstance(expr, IRGenericExpr):
             return IRGenericExpr(self.substitute_expr(expr.generic), [self.substitute_type(arg) for arg in expr.arguments]).set_loc(expr.loc)
         elif isinstance(expr, IRBlock):
-            return IRBlock([self.substitute_stmt(stmt) for stmt in expr.body], [self.value_decl[decl] for decl in self.value_decl]).set_loc(expr.loc)
+            return IRBlock([self.substitute_stmt(stmt) for stmt in expr.body], [self.value_decl[decl] for decl in self.value_decl], expr.return_unit).set_loc(expr.loc)
         elif isinstance(expr, IRIf):
             return IRIf(self.substitute_expr(expr.cond), self.substitute_expr(expr.then_do), None if expr.else_do is None else self.substitute_expr(expr.else_do)).set_loc(expr.loc)
         elif isinstance(expr, IRAssign):

@@ -366,7 +366,7 @@ class LLVMGen:
             self.closures.pop()
             self.recent_closure.pop()
 
-        if last_result is None:
+        if expr.return_unit:
             return self.unit
         else:
             return last_result

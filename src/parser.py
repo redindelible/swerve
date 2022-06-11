@@ -298,9 +298,11 @@ class ParseState:
         else:
             self.push_loc()
             expr = self.parse_expr()
-            if expr.requires_semicolon() or self.match(TokenType.SEMICOLON):
+            has_semicolon = False
+            if self.match(TokenType.SEMICOLON):
                 self.expect(TokenType.SEMICOLON)
-            return ASTExprStmt(expr, self.pop_loc())
+                has_semicolon = True
+            return ASTExprStmt(expr, has_semicolon, self.pop_loc())
 
     def parse_while(self):
         self.push_loc()
@@ -370,8 +372,23 @@ class ParseState:
         while not self.match(TokenType.RIGHT_BRACE):
             stmt = self.parse_stmt()
             stmts.append(stmt)
+            if isinstance(stmt, ASTExprStmt) and not stmt.trailing_semicolon and stmt.expr.requires_semicolon():
+                if self.match(TokenType.RIGHT_BRACE):
+                    break
+                else:
+                    # TODO better error message maybe?
+                    self.expect(TokenType.SEMICOLON)
+        if len(stmts) == 0:
+            return_unit = True
+        else:
+            last_stmt = stmts[-1]
+            if isinstance(last_stmt, ASTExprStmt):
+                return_unit = last_stmt.trailing_semicolon
+            else:
+                return_unit = True
+
         self.expect(TokenType.RIGHT_BRACE)
-        return ASTBlockExpr(stmts, self.pop_loc())
+        return ASTBlockExpr(stmts, return_unit, self.pop_loc())
 
     def parse_precedence_2(self) -> ASTExpr:
         left = self.parse_precedence_3()

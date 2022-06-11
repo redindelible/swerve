@@ -470,13 +470,15 @@ class IRExpr(IRNode):
 
 
 class IRBlock(IRExpr):
-    def __init__(self, body: list[IRStmt], declared: list[IRValueDecl]):
+    def __init__(self, body: list[IRStmt], declared: list[IRValueDecl], return_unit: bool):
         super().__init__()
         self.body = body
 
         self.declared = declared
         for decl in self.declared:
             decl.in_block = self
+
+        self.return_unit = return_unit
 
     def always_returns(self) -> bool:
         if len(self.body) == 0:

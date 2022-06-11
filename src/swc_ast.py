@@ -327,8 +327,9 @@ class ASTForStmt(ASTStmt):
 
 
 class ASTExprStmt(ASTStmt):
-    def __init__(self, expr: ASTExpr, loc: Location):
+    def __init__(self, expr: ASTExpr, has_trailing_semicolon: bool, loc: Location):
         super().__init__(loc)
+        self.trailing_semicolon = has_trailing_semicolon
         self.expr: ASTExpr = expr
 
     def pretty_print(self, printer: Printer):
@@ -384,9 +385,10 @@ class ASTIfExpr(ASTExpr):
 
 
 class ASTBlockExpr(ASTExpr):
-    def __init__(self, body: list[ASTStmt], location: Location):
+    def __init__(self, body: list[ASTStmt], return_unit: bool, location: Location):
         super().__init__(location)
         self.stmts = body
+        self.return_unit = return_unit
 
     @staticmethod
     def requires_semicolon():

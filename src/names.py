@@ -389,7 +389,7 @@ class ResolveNames:
             for exterior_name in exterior_names:
                 exterior_name.put_in_closure = True
 
-            return IRLambda(exterior_names, params, ret_type, IRBlock([IRExprStmt(expr_expr).set_loc(expr.expr.loc)], list(expr_ns.value_names.values())).set_loc(expr.expr.loc)).set_loc(expr.loc)
+            return IRLambda(exterior_names, params, ret_type, IRBlock([IRExprStmt(expr_expr).set_loc(expr.expr.loc)], list(expr_ns.value_names.values()), False).set_loc(expr.expr.loc)).set_loc(expr.loc)
         else:
             raise ValueError()
 
@@ -403,7 +403,7 @@ class ResolveNames:
             stmts.append(self.resolve_stmt(stmt))
         ns = self.pop()
         # print(ns.value_names)
-        return IRBlock(stmts, list(ns.value_names.values())).set_loc(body.loc)
+        return IRBlock(stmts, list(ns.value_names.values()), body.return_unit).set_loc(body.loc)
 
     def resolve_type(self, type: ASTType) -> IRType:
         if isinstance(type, ASTTypeIdent):
