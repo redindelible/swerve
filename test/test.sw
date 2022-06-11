@@ -1,22 +1,12 @@
 
 
-struct Holder[T] {
-    val: T
-
-    fn ::get(self) -> T {
-        return self.val;
-    }
-
-    fn ::set(self, value: T) -> () {
-        self.val = value;
+struct DiscountNamespace {
+    fn ::rand_int() -> int {
+        # 100% natural and free-range random number
+        return 4;
     }
 }
 
-
-
 fn main() -> int {
-    let a := Holder[int](3);
-    a.set(8);
-
-    return a.get();
+    return DiscountNamespace().rand_int();
 }

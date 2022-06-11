@@ -159,6 +159,9 @@ class TokenStream:
                 self._advance()
             elif self._curr in " \t\r":
                 self._advance()
+            elif self._curr == "#":
+                while self._curr != "\n":
+                    self._advance()
             elif self._curr == "+":
                 self._new_token()
                 if self._next == "=":
