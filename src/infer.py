@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import cast
 
 from swc_ir import *
-from common import CompilerMessage, ErrorType, Location
+from common import CompilerMessage, ErrorType, Location, ValueStack, NamedTuple
 
 
 def infer_types(program: IRProgram):
@@ -11,14 +11,18 @@ def infer_types(program: IRProgram):
     inferrer.infer_types()
 
 
+class Return(NamedTuple):
+    type: IRResolvedType
+    loc: Location
+
+
 class BidirectionalTypeInference:
     def __init__(self, program: IRProgram):
         self.program = program
 
-        self.expected_return_type: IRResolvedType | None = None
-        self.expected_return_loc: Location | None = None
+        self.expected_return: ValueStack[Return] = ValueStack()
 
-        self.substitutions: list[dict[IRTypeVarType, IRResolvedType]] = []
+        self.substitutions: ValueStack[dict[IRTypeVarType, IRResolvedType]] = ValueStack(initial={})
 
     def resolve_generic_struct(self, generic: IRGenericStruct, arguments: dict[IRTypeVarType, IRResolvedType], loc: Location) -> IRStruct:
         if len(arguments) != len(generic.type_vars):
@@ -43,39 +47,46 @@ class BidirectionalTypeInference:
                 new_type_vars,
                 generic.supertraits,
                 [IRField(field.name, field.type).set_loc(field.loc) for field in generic.fields],
-                generic.methods,
-                [], generic.reifications
+                [IRMethod(method.name, method.is_static, method.is_self, method.function).set_loc(method.loc) for method in generic.methods],
+                generic.reifications
             ).set_loc(loc)
+            struct.type_decl.type = IRGenericStructType(struct, list(arguments.values())).set_loc(loc)
+
+            is_concrete = False
         else:
             struct = IRStruct(
                 IRTypeDecl(IRUnresolvedUnknownType(), generic.type_decl.location),
                 IRValueDecl(IRUnresolvedUnknownType(), generic.constructor.location, False),
-                f"{generic.name}[{', '.join(str(arg) for arg in arguments)}]",
+                f"{generic.name}[{', '.join(str(arg) for arg in arguments.values())}]",
                 generic.supertraits,
                 [IRField(field.name, field.type).set_loc(field.loc) for field in generic.fields],
-                generic.methods
+                [IRMethod(method.name, method.is_static, method.is_self, method.function).set_loc(method.loc) for method in generic.methods]
             ).set_loc(loc)
+            struct.type_decl.type = IRStructType(struct).set_loc(loc)
+
+            is_concrete = True
         generic.reifications[tuple(arguments.values())] = struct
 
-        field_types: list[IRParameterType] = []
-        for field in struct.fields:
-            field.type = self.substitute_types(field.type, arguments, field.loc)
-            field_types.append(IRParameterType(field.type, field.loc))
+        with self.substitutions.replace(arguments):
+            for method in struct.methods:
+                func = IRFunction(
+                    IRValueDecl(IRUnresolvedUnknownType(), method.function.loc, False),
+                    f"{struct.name}::{method.name}",
+                    [IRParameter(IRValueDecl(param.decl.type, param.loc, True), param.name, param.type) for param in method.function.parameters],
+                    method.function.return_type,
+                    method.function.body
+                ).set_loc(generic.loc)
+                func.body = SubstituteNodes(self.substitutions.value,
+                                            {old_param.decl: new_param.decl for new_param, old_param in zip(func.parameters, method.function.parameters)},
+                                            self).perform_substitutions(func.body)
+                method.function = func
 
-        if isinstance(struct, IRGenericStruct):
-            struct.type_decl.type = IRGenericStructType(struct, list(arguments.values())).set_loc(loc)
+            self.infer_struct_body(struct)
+            self.infer_struct_methods(struct)
 
-            def callback(type_args: list[IRResolvedType], loc_: Location) -> tuple[IRFunctionType, IRExpr]:
-                nonlocal struct; cast(IRGenericStruct, struct)
-                # TODO length check
-                resultant = self.resolve_generic_struct(struct, {type_var.type_decl.type: arg for type_var, arg in zip(struct.type_vars, type_args)}, loc_)
-                return cast(IRFunctionType, resultant.constructor.type), IRNameExpr(resultant.constructor)
-
-            # noinspection PyTypeChecker
-            struct.constructor.type = IRGenericFunctionType(struct.type_vars, field_types, struct.type_decl.type, callback).set_loc(struct.loc)
-        else:
-            struct.type_decl.type = IRStructType(struct).set_loc(loc)
-            struct.constructor.type = IRFunctionType([IRParameterType(field.type, field.loc) for field in struct.fields], struct.type_decl.type).set_loc(loc)
+        if is_concrete:
+            for method in struct.methods:
+                self.program.functions.append(method.function)
 
         self.program.structs.append(struct)
         return struct
@@ -96,71 +107,37 @@ class BidirectionalTypeInference:
                 IRValueDecl(IRUnresolvedUnknownType(), generic.decl.location, False),
                 f"{generic.name}[{', '.join(str(arg) for arg in arguments)}]",
                 [IRParameter(IRValueDecl(param.decl.type, param.loc, True), param.name, param.type) for param in generic.parameters],
-                IRUnresolvedUnknownType(),
+                generic.return_type,
                 generic.body
             ).set_loc(generic.loc)
             generic.reifications[tuple(arguments)] = func
 
             substitutions: dict[IRTypeVarType, IRResolvedType] = dict(zip((cast(IRTypeVarType, type_var.type_decl.type) for type_var in generic.type_vars), arguments))
-
-            for param in func.parameters:
-                param.decl.type = param.type = self.substitute_types(param.type, substitutions, param.loc)
-                    # field.loc = loc
-            func.return_type = self.substitute_types(cast(IRResolvedType, generic.return_type), substitutions, func.loc)
-            # print(func.return_type)
-            func.function_type = func.decl.type = IRFunctionType([IRParameterType(param.type, param.loc) for param in func.parameters], func.return_type)
-
-            old_ret_type, self.expected_return_type = self.expected_return_type, func.return_type
-            old_ret_loc, self.expected_return_loc = self.expected_return_loc, func.loc
-
             func.body = SubstituteNodes(substitutions, {old_param.decl: new_param.decl for new_param, old_param in zip(func.parameters, generic.parameters)}, self).perform_substitutions(func.body)
-            # self.substitutions.append(substitutions)
-            for stmt in func.body.body:
-                self.infer_stmt(stmt)
-            # self.substitutions.pop()
 
-            self.expected_return_type = old_ret_type
-            self.expected_return_loc = old_ret_loc
+            with self.substitutions.replace(substitutions):
+                self.infer_function_type(func)
+                self.infer_function_body(func)
 
             self.program.functions.append(func)
             return func
 
-    def substitute_types(self, type: IRResolvedType, substitutions: dict[IRType, IRResolvedType], loc: Location) -> IRResolvedType:
-        if isinstance(type, (IRIntegerType, IRStringType, IRUnitType, IRBoolType, IRFunctionType, IRStructType)):
-            # TODO possibly replace with type.is_concrete()?
-            return type
-        elif isinstance(type, IRTypeVarType):
-            if type in substitutions:
-                return substitutions[type]
-            else:
-                return type
-        elif isinstance(type, IRGenericStructType):
-            arguments: dict[IRTypeVarType, IRResolvedType] = {}
-            for type_var in type.generic.type_vars:
-                type_var_type = cast(IRTypeVarType, type_var.type_decl.type)
-                if type_var_type in substitutions:
-                    arguments[type_var_type] = substitutions[type_var_type]
-                else:
-                    arguments[type_var_type] = type_var_type
-            struct = self.resolve_generic_struct(type.generic, arguments, loc)
-            return cast(IRResolvedType, struct.type_decl.type)
-        elif isinstance(type, IRGenericFunctionType):
-            # TODO
-            raise ValueError()
-        else:
-            raise ValueError(repr(type))
-
     def infer_types(self):
-        for struct in self.program.structs:
+        initial_structs = self.program.structs[:]
+        initial_functions = self.program.functions[:]
+        for struct in initial_structs:
             self.infer_struct_type(struct)
 
-        for struct in self.program.structs:
+        for struct in initial_structs:
             self.infer_struct_body(struct)
 
-        for function in self.program.functions:
+        for struct in initial_structs:
+            self.infer_struct_methods(struct)
+
+        for function in initial_functions:
             self.infer_function_type(function)
 
-        for function in self.program.functions[:]:
+        for function in initial_functions:
             self.infer_function_body(function)
 
     def infer_struct_type(self, struct: IRStruct):
@@ -177,10 +154,32 @@ class BidirectionalTypeInference:
     def infer_struct_body(self, struct: IRStruct):
         field_types: list[IRParameterType] = []
         for field in struct.fields:
-            field.type = resolved_type = self.resolve_type(field.type)
-            if resolved_type is None:
+            field.type = self.resolve_type(field.type)
+            if field.type is None:
                 raise ValueError()
-            field_types.append(IRParameterType(resolved_type, field.loc))
+            field_types.append(IRParameterType(field.type, field.loc))
+
+        for method in struct.methods:
+            function = method.function
+            param_types: list[IRParameterType] = []
+            for param in function.parameters:
+                if len(param_types) == 0 and method.is_self:
+                    param.decl.type = param.type = struct.type_decl.type
+                else:
+                    param.decl.type = param.type = self.resolve_type(param.type)
+                    if param.type is None:
+                        raise ValueError()
+                param_types.append(IRParameterType(param.type, param.loc))
+
+            function.return_type = self.resolve_type(function.return_type)
+            if function.return_type is None:
+                raise ValueError()
+
+            function.function_type = function.decl.type = IRFunctionType(param_types, function.return_type).set_loc(method.loc)
+
+            if not function.body.always_returns():
+                if function.return_type != IRUnitType():
+                    raise CompilerMessage(ErrorType.COMPILATION, f"Cannot prove that function always has a return value:", method.loc)
 
         if isinstance(struct, IRGenericStruct):
             def callback(type_args: list[IRResolvedType], loc: Location) -> tuple[IRFunctionType, IRExpr]:
@@ -196,47 +195,42 @@ class BidirectionalTypeInference:
             # noinspection PyTypeChecker
             struct.constructor.type = IRFunctionType(field_types, struct.type_decl.type).set_loc(struct.loc)
 
+    def infer_struct_methods(self, struct: IRStruct):
+        for method in struct.methods:
+            self.infer_function_body(method.function)
+
     def infer_function_type(self, function: IRFunction):
         if isinstance(function, IRGenericFunction):
             for type_var in function.type_vars:
                 type_var.type_decl.type = IRTypeVarType(type_var).set_loc(type_var.loc)
         param_types: list[IRParameterType] = []
         for param in function.parameters:
-            resolved = self.resolve_type(param.type)
-            if resolved is None:
+            param.type = param.decl.type = self.resolve_type(param.type)
+            if param.type is None:
                 raise ValueError()
-            param_types.append(IRParameterType(resolved, param.loc))
-            param.type = resolved
-            param.decl.type = resolved
+            param_types.append(IRParameterType(param.type, param.loc))
 
-        resolved = self.resolve_type(function.return_type)
-        if resolved is None:
+        function.return_type = self.resolve_type(function.return_type)
+        if function.return_type is None:
             raise ValueError()
-        function.return_type = resolved
 
         if isinstance(function, IRGenericFunction):
             def callback(type_args: list[IRResolvedType], loc: Location) -> tuple[IRFunctionType, IRExpr]:
                 resultant = self.resolve_generic_function(cast(IRGenericFunction, function), type_args, loc)
                 return cast(IRFunctionType, resultant.decl.type), IRNameExpr(resultant.decl)
 
-            f_type = IRGenericFunctionType(function.type_vars, param_types, resolved, callback).set_loc(function.loc)
+            f_type = IRGenericFunctionType(function.type_vars, param_types, function.return_type, callback).set_loc(function.loc)
         else:
-            f_type = IRFunctionType(param_types, resolved).set_loc(function.loc)
+            f_type = IRFunctionType(param_types, function.return_type).set_loc(function.loc)
         function.function_type = function.decl.type = f_type
 
-        if not function.body.always_returns():
-            if function.return_type != IRUnitType():
-                raise CompilerMessage(ErrorType.COMPILATION, f"Cannot prove that function always has a return value:", function.loc)
+        if not function.body.always_returns() and function.return_type != IRUnitType():
+            raise CompilerMessage(ErrorType.COMPILATION, f"Cannot prove that function always has a return value:", function.loc)
 
     def infer_function_body(self, function: IRFunction):
-        self.expected_return_type = function.return_type
-        self.expected_return_loc = function.loc
-
-        for stmt in function.body.body:
-            self.infer_stmt(stmt)
-
-        self.expected_return_type = None
-        self.expected_return_loc = None
+        with self.expected_return.replace(Return(cast(IRResolvedType, function.return_type), function.loc)):
+            for stmt in function.body.body:
+                self.infer_stmt(stmt)
 
     def infer_stmt(self, stmt: IRStmt):
         if isinstance(stmt, IRDeclStmt):
@@ -259,7 +253,8 @@ class BidirectionalTypeInference:
         stmt.decl.type = resolved_decl
 
     def infer_return_stmt(self, stmt: IRReturnStmt):
-        self.unify_expr(stmt.expr, self.expected_return_type, self.expected_return_loc)
+        expected_return = self.expected_return.value
+        self.unify_expr(stmt.expr, expected_return.type, expected_return.loc)
 
     def infer_while_stmt(self, stmt: IRWhileStmt):
         self.unify_expr(stmt.cond, IRBoolType(), None)
@@ -308,19 +303,6 @@ class BidirectionalTypeInference:
         expr.yield_type, _ = self.unify_type(resolved_name, bound, expr.loc, bound_loc)
         return expr.yield_type
 
-    def unify_call_expr(self, expr: IRCallExpr, bound: IRResolvedType | None, bound_loc: Location | None) -> IRResolvedType:
-        resolved_callee = self.unify_expr(expr.callee, None, None)
-        if not isinstance(resolved_callee, IRFunctionType):
-            raise CompilerMessage(ErrorType.COMPILATION, f"Callee must be a function, is instead a {resolved_callee}", expr.loc)
-        if len(resolved_callee.param_types) != len(expr.arguments):
-            raise CompilerMessage(ErrorType.COMPILATION, f"Mismatched argument counts (expected {len(resolved_callee.param_types)}, got {len(expr.arguments)}):", expr.loc, [
-                CompilerMessage(ErrorType.NOTE, f"Function declared here:", resolved_callee.loc)
-            ])
-        for param, argument in zip(resolved_callee.param_types, expr.arguments):
-            self.unify_expr(argument, param.type, param.loc)
-        expr.yield_type, _ = self.unify_type(resolved_callee.ret_type, bound, expr.loc, bound_loc)
-        return expr.yield_type
-
     def unify_generic_expr(self, expr: IRGenericExpr, bound: IRResolvedType | None, bound_loc: Location | None) -> IRResolvedType:
         resolved_generic = self.unify_expr(expr.generic, None, None)
         if not isinstance(resolved_generic, IRGenericFunctionType):
@@ -333,6 +315,38 @@ class BidirectionalTypeInference:
 
         expr.yield_type, replacement_name = resolved_generic.callback([self.resolve_type(type) for type in expr.arguments], expr.loc)
         expr.replacement_expr = replacement_name
+        return expr.yield_type
+
+    def unify_call_expr(self, expr: IRCallExpr, bound: IRResolvedType | None, bound_loc: Location | None) -> IRResolvedType:
+        if isinstance(expr.callee, IRAttrExpr):
+            resolved_object = self.unify_expr(expr.callee.object, None, None)
+            if not isinstance(resolved_object, IRStructType):
+                raise CompilerMessage(ErrorType.COMPILATION, f"Object must be a struct, is instead a {resolved_object}:", expr.callee.loc)
+            if (method_index := resolved_object.struct.has_method(expr.callee.attr)) is not None:
+                method = resolved_object.struct.methods[method_index]
+                resolved_callee = method.function.function_type
+
+                if len(resolved_callee.param_types) != len(expr.arguments) + (1 if method.is_self else 0):
+                    raise CompilerMessage(ErrorType.COMPILATION, f"Mismatched argument counts (expected {len(resolved_callee.param_types)}, got {len(expr.arguments) + (1 if method.is_self else 0)}):", expr.loc, [
+                        CompilerMessage(ErrorType.NOTE, f"Function declared here:", resolved_callee.loc)
+                    ])
+                for param, argument in zip(resolved_callee.param_types[1:], expr.arguments):
+                    self.unify_expr(argument, param.type, param.loc)
+
+                expr.as_method_call = IRMethodCallExpr(expr.callee.object, method, expr.arguments[:])
+                expr.yield_type, _ = self.unify_type(resolved_callee.ret_type, bound, expr.loc, bound_loc)
+                return expr.yield_type
+
+        resolved_callee = self.unify_expr(expr.callee, None, None)
+        if not isinstance(resolved_callee, IRFunctionType):
+            raise CompilerMessage(ErrorType.COMPILATION, f"Callee must be a function, is instead a {resolved_callee}", expr.loc)
+        if len(resolved_callee.param_types) != len(expr.arguments):
+            raise CompilerMessage(ErrorType.COMPILATION, f"Mismatched argument counts (expected {len(resolved_callee.param_types)}, got {len(expr.arguments)}):", expr.loc, [
+                CompilerMessage(ErrorType.NOTE, f"Function declared here:", resolved_callee.loc)
+            ])
+        for param, argument in zip(resolved_callee.param_types, expr.arguments):
+            self.unify_expr(argument, param.type, param.loc)
+        expr.yield_type, _ = self.unify_type(resolved_callee.ret_type, bound, expr.loc, bound_loc)
         return expr.yield_type
 
     def unify_attr_expr(self, expr: IRAttrExpr, bound: IRResolvedType | None, bound_loc: Location | None) -> IRResolvedType:
@@ -403,17 +417,6 @@ class BidirectionalTypeInference:
                     raise CompilerMessage(ErrorType.COMPILATION,
                                           f"Mismatched arguments to modulus (left is {left_type}, right is {right_type}):",
                                           expr.loc)
-            # case "Pow":
-            #     left_type = self.unify_expr(expr.left, None, None)
-            #     right_type = self.unify_expr(expr.right, None, None)
-            #     if isinstance(left_type, IRIntegerType) and isinstance(right_type, IRIntegerType):
-            #         expr.yield_type, _ = self.unify_type(IRIntegerType(max(left_type.bits, right_type.bits)), bound,
-            #                                              expr.loc, bound_loc)
-            #         return expr.yield_type
-            #     else:
-            #         raise CompilerMessage(ErrorType.COMPILATION,
-            #                               f"Mismatched arguments to exponentiation (left is {left_type}, right is {right_type}):",
-            #                               expr.loc)
             case "Less" | "Greater" | "LessEqual" | "GreaterEqual" | "Equal" | "NotEqual":
                 left_type = self.unify_expr(expr.left, None, None)
                 right_type = self.unify_expr(expr.right, None, None)
@@ -488,9 +491,6 @@ class BidirectionalTypeInference:
                 param.type, _ = self.unify_type(self.resolve_type(param.type), expected_param.type, param.loc, expected_param.loc)
                 param.decl.type = param.type
             expr.ret_type, _ = self.unify_type(self.resolve_type(expr.ret_type), bound.ret_type, expr.loc, bound.loc)
-            self.unify_expr(expr.body, expr.ret_type, bound.loc)
-
-            expr.yield_type = IRFunctionType([IRParameterType(param.type, param.loc) for param in expr.parameters], expr.ret_type)
         else:
             for param in expr.parameters:
                 param.type = self.resolve_type(param.type)
@@ -500,10 +500,11 @@ class BidirectionalTypeInference:
             expr.ret_type = self.resolve_type(expr.ret_type)
             if expr.ret_type is None:
                 raise CompilerMessage(ErrorType.COMPILATION, f"Type of return type could not be inferred", expr.loc)
+        with self.expected_return.replace(Return(expr.ret_type, expr.loc)):
             self.unify_expr(expr.body, expr.ret_type, expr.loc)
 
-            expr.yield_type = IRFunctionType([IRParameterType(param.type, param.loc) for param in expr.parameters], expr.ret_type)
-            self.unify_type(expr.yield_type, bound, expr.loc, bound_loc)
+        expr.yield_type = IRFunctionType([IRParameterType(param.type, param.loc) for param in expr.parameters], expr.ret_type).set_loc(expr.loc)
+        self.unify_type(expr.yield_type, bound, expr.loc, bound_loc)
         return expr.yield_type
 
     def unify_type(self, yield_type: IRResolvedType | None, bound_type: IRResolvedType | None, yield_loc: Location, expected_loc: Location | None) -> tuple[IRResolvedType, IRResolvedType]:
@@ -525,7 +526,12 @@ class BidirectionalTypeInference:
                     raise CompilerMessage(ErrorType.COMPILATION, f"Types do not agree. Expected {bound_type}, got {yield_type}", yield_loc)
 
     def resolve_type(self, type: IRType) -> IRResolvedType | None:
-        if isinstance(type, IRResolvedType):
+        if isinstance(type, IRTypeVarType):
+            if type in self.substitutions.value:
+                return self.substitutions.value[type]
+            else:
+                return type
+        elif isinstance(type, IRResolvedType):
             return type
         else:
             if isinstance(type, IRUnresolvedNameType):

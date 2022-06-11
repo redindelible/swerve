@@ -201,9 +201,9 @@ class IRStructType(IRResolvedType):
         return hash(self.struct)
 
 
-class IRGenericStructType(IRResolvedType):
+class IRGenericStructType(IRStructType):
     def __init__(self, generic: IRGenericStruct, partial: list[IRResolvedType]):
-        super().__init__()
+        super().__init__(generic)
         self.generic = generic
         self.partial = partial
 
@@ -337,10 +337,24 @@ class IRStruct(IRNode):
         self.methods = methods
         self.fields = fields
 
+    def has_field(self, name: str) -> int | None:
+        for i, field in enumerate(self.fields):
+            if field.name == name:
+                return i
+        else:
+            return None
+
+    def has_method(self, name: str) -> int | None:
+        for i, method in enumerate(self.methods):
+            if method.name == name:
+                return i
+        else:
+            return None
+
 
 class IRGenericStruct(IRStruct):
     def __init__(self, type_decl: IRTypeDecl, constructor: IRValueDecl, name: str, type_vars: list[IRTypeVariable], supertraits: list[IRType],
-                 fields: list[IRField], methods: list[IRMethod], generic_methods: list[IRGenericMethod], reifications: dict[tuple[IRResolvedType], IRStruct]):
+                 fields: list[IRField], methods: list[IRMethod], reifications: dict[tuple[IRResolvedType], IRStruct]):
         super().__init__(type_decl, constructor, name, supertraits, fields, methods)
         self.type_vars = type_vars
 
@@ -354,8 +368,9 @@ class IRField(IRNode):
         self.type = type
 
 
-class IRMethod:
+class IRMethod(IRNode):
     def __init__(self, name: str, is_static: bool, is_self: bool, function: IRFunction):
+        super().__init__()
         self.name = name
         self.is_static = is_static
         self.is_self = is_self
@@ -551,6 +566,17 @@ class IRCallExpr(IRExpr):
     def __init__(self, callee: IRExpr, arguments: list[IRExpr]):
         super().__init__()
         self.callee = callee
+        self.arguments = arguments
+
+        self.as_method_call: IRMethodCallExpr | None = None
+
+
+class IRMethodCallExpr(IRExpr):
+    def __init__(self, obj: IRExpr, method: IRMethod, arguments: list[IRExpr]):
+        super().__init__()
+
+        self.obj = obj
+        self.method = method
         self.arguments = arguments
 
 

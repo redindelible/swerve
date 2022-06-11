@@ -3,10 +3,32 @@ from __future__ import annotations
 from enum import Enum
 from textwrap import indent
 from pathlib import Path
+from contextlib import contextmanager
 
-from typing import IO
+from typing import IO, Generic, TypeVar, NamedTuple
 
-__all__ = ['CompilerMessage', 'ErrorType', 'Source', 'Location', 'BuiltinLocation', 'SourceLocation', 'CommandLineLocation', 'Path']
+__all__ = ['CompilerMessage', 'ErrorType', 'Source', 'Location', 'BuiltinLocation', 'SourceLocation', 'CommandLineLocation', 'Path', 'ValueStack', 'NamedTuple']
+
+
+T = TypeVar('T')
+
+
+class ValueStack(Generic[T]):
+    def __init__(self, initial: T = None):
+        if initial is not None:
+            self._stack: list[T] = [initial]
+        else:
+            self._stack: list[T] = []
+
+    @contextmanager
+    def replace(self, value: T) -> T:
+        self._stack.append(value)
+        yield value
+        self._stack.pop()
+
+    @property
+    def value(self) -> T:
+        return self._stack[-1]
 
 
 class ErrorType(Enum):

@@ -204,7 +204,7 @@ class ASTMethod(ASTNode):
         self.name: str = name.text
         self.parameters = parameters
         self.is_static = is_static
-        self.self_name: str | None = self_name.text if self_name is not None else None
+        self.self_name: Token | None = self_name
         self.return_type = return_type
         self.body = body
 

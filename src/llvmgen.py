@@ -84,9 +84,10 @@ class LLVMGen:
 
     def load_structs(self):
         for struct in self.program.structs:
-            struct_type = self.module.context.get_identified_type(struct.name)
-            # noinspection PyTypeChecker
-            self.struct_types[struct.type_decl.type] = ir.PointerType(struct_type)
+            if not isinstance(struct, IRGenericStruct):
+                struct_type = self.module.context.get_identified_type(struct.name)
+                # noinspection PyTypeChecker
+                self.struct_types[struct.type_decl.type] = ir.PointerType(struct_type)
 
         for struct in self.program.structs:
             if not isinstance(struct, IRGenericStruct):
@@ -273,6 +274,8 @@ class LLVMGen:
             raise ValueError(name, expr.name)
 
     def generate_call_expr(self, expr: IRCallExpr) -> ir.Value:
+        if expr.as_method_call is not None:
+            return self.generate_method_call_expr(expr.as_method_call)
         fn_struct_p = self.generate_expr(expr.callee)
         fn_ptr = self.builder.load(self.gep(fn_struct_p, [0, 0]))
         closure_ptr = self.builder.load(self.gep(fn_struct_p, [0, 1]))
@@ -282,6 +285,23 @@ class LLVMGen:
         object = self.generate_expr(expr.object)
         element_pointer = self.builder.gep(object, (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), expr.index),))
         return self.builder.load(element_pointer)
+
+    def generate_method_call_expr(self, expr: IRMethodCallExpr) -> ir.Value:
+        if expr.method.is_static:
+            obj = self.generate_expr(expr.obj)
+
+            func = expr.method.function
+            fn_struct_p = self.decl_values[func.decl]
+            fn_ptr = self.builder.load(self.gep(fn_struct_p, [0, 0]))
+            closure_ptr = self.builder.load(self.gep(fn_struct_p, [0, 1]))
+
+            arguments = [closure_ptr]
+            if expr.method.is_self:
+                arguments.append(obj)
+            arguments.extend(self.generate_expr(arg) for arg in expr.arguments)
+            return self.builder.call(fn_ptr, arguments)
+        else:
+            raise ValueError()
 
     def generate_generic_expr(self, expr: IRGenericExpr) -> ir.Value:
         return self.generate_expr(expr.replacement_expr)

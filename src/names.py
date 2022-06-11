@@ -169,6 +169,7 @@ class ResolveNames:
         struct_ns = self.push(Namespace())
         for method in struct.methods:
             decl = self.curr_ns.declare_value(method.name, IRValueDecl(IRUnresolvedUnknownType(), method.loc, False))
+            self.value_decls[method] = decl
         self.pop()
         self.struct_type_decls[struct] = type_decl
 
@@ -264,23 +265,29 @@ class ResolveNames:
         for field in struct.fields:
             fields.append(IRField(field.name, self.resolve_type(field.type)).set_loc(field.loc))
 
+        methods: list[IRMethod] = []
         for method in struct.methods:
             ret_type = self.resolve_type(method.return_type)
 
             body_ns = self.push(Namespace())
-            params = []
+            params: list[IRParameter] = []
             if method.self_name is not None:
-                self_decl = self.curr_ns.declare_value(method.self_name, IRValueDecl(IRUnresolvedUnknownType(), BuiltinLocation(), True))
-                params.append(IRParameter(self_decl, method.name, IRUnresolvedNameType(struct_type_decl)))
+                self_decl = self.curr_ns.declare_value(method.self_name.text, IRValueDecl(IRUnresolvedUnknownType(), BuiltinLocation(), True))
+                param = IRParameter(self_decl, method.name, IRUnresolvedNameType(struct_type_decl)).set_loc(method.self_name.location)
+                params.append(param)
             for param in method.parameters:
                 param_decl = self.curr_ns.declare_value(param.name, IRValueDecl(IRUnresolvedUnknownType(), param.loc, True))
-                params.append(IRParameter(param_decl, param.name, self.resolve_type(param.type)))
+                param = IRParameter(param_decl, param.name, self.resolve_type(param.type)).set_loc(param.loc)
+                params.append(param)
 
             body = self.resolve_body(method.body, self.pop())
-            # program.functions.append(IRFunction(self.value_decls[method], method.name, params, ret_type, body))
+
+            func = IRFunction(self.value_decls[method], method.name, params, ret_type, body).set_loc(method.loc)
+            method = IRMethod(func.name, method.is_static, method.self_name is not None, func).set_loc(method.loc)
+            methods.append(method)
         self.pop()
 
-        type = IRGenericStruct(struct_type_decl, self.value_decls[struct], struct.name, type_vars, supertraits, fields, [], [], {})
+        type = IRGenericStruct(struct_type_decl, self.value_decls[struct], struct.name, type_vars, supertraits, fields, methods, {})
         struct_type_decl.type = type
 
         program.structs.append(type)

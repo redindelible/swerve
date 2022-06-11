@@ -29,6 +29,7 @@ def main():
         program = parse_program(arguments.file, import_dirs)
     except CompilerMessage as msg:
         msg.display(stderr)
+        raise
         return
 
     try:
