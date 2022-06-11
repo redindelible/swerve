@@ -53,6 +53,7 @@ class LLVMGen:
         self.closures: list[Closure] = []
         self.recent_closure: list[ir.Value] = []
         self.current_block: IRBlock | None = None
+        self.function_ir: dict[IRFunction, ir.Function] = {}
         self.decl_values: dict[IRValueDecl, ir.Value] = {}
         self.struct_types: dict[IRStructType, ir.PointerType] = {}
 
@@ -97,15 +98,21 @@ class LLVMGen:
                 self.generate_constructor(struct, struct_p_type)
 
     def generate_constructor(self, struct: IRStruct, struct_type: ir.PointerType):
-        constructor_type = ir.FunctionType(struct_type, [self.generate_type(field.type) for field in struct.fields])
-        constructor = self.decl_values[struct.constructor] = ir.Function(self.module, constructor_type, self.new_name(f"{struct.name}_constructor"))
+        constructor_type = ir.FunctionType(struct_type, [self.void_p_type] + [self.generate_type(field.type) for field in struct.fields])
+        constructor = ir.Function(self.module, constructor_type, self.new_name(f"{struct.name}_constructor"))
+
+        func_value = ir.GlobalVariable(self.module, cast(ir.PointerType, self.generate_type(struct.constructor.type)).pointee, f"obj_{constructor.name}")
+        func_value.global_constant = True
+        func_value.initializer = ir.Constant(func_value.type.pointee, [constructor, ir.Constant(self.void_p_type, None)])
+
+        self.decl_values[struct.constructor] = func_value
 
         self.builder = ir.IRBuilder(constructor.append_basic_block("entry"))
 
         mem = self.builder.call(self.external_functions["malloc"], [ir.Constant(ir.IntType(64), self.size_of(struct_type.pointee))])
         obj = self.builder.bitcast(mem, struct_type)
 
-        for index, arg in enumerate(constructor.args):
+        for index, arg in enumerate(constructor.args[1:]):
             field_ptr = self.builder.gep(obj, [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), index)])
             self.builder.store(arg, field_ptr)
 
@@ -113,9 +120,14 @@ class LLVMGen:
 
     def generate_functions(self):
         for function in self.program.functions:
-            self.generate_function(function)
+            if not isinstance(function, IRGenericFunction):
+                self.generate_function_header(function)
 
-    def generate_function(self, function: IRFunction):
+        for function in self.program.functions:
+            if not isinstance(function, IRGenericFunction):
+                self.generate_function(function)
+
+    def generate_function_header(self, function: IRFunction):
         ir_func_type = function.function_type
         func_type = ir.FunctionType(self.generate_type(ir_func_type.ret_type), [self.void_p_type] + [self.generate_type(param_type.type) for param_type in ir_func_type.param_types])
         func = ir.Function(self.module, func_type, self.new_name(function.name))
@@ -124,6 +136,10 @@ class LLVMGen:
         func_value.global_constant = True
         func_value.initializer = ir.Constant(func_value.type.pointee, [func, ir.Constant(self.void_p_type, None)])
         self.decl_values[function.decl] = func_value
+        self.function_ir[function] = func
+
+    def generate_function(self, function: IRFunction):
+        func = self.function_ir[function]
 
         entry_block = func.append_basic_block("entry")
         self.builder = ir.IRBuilder(entry_block)
@@ -251,7 +267,7 @@ class LLVMGen:
                 else:
                     raise ValueError()
             else:
-                print(type(name), expr.name)
+                # print(type(name), expr.name)
                 return self.builder.load(name)
         else:
             raise ValueError(name, expr.name)
@@ -496,4 +512,4 @@ class LLVMGen:
                 self.void_p_type
             ]))
         else:
-            raise ValueError(type)
+            raise ValueError(type.__class__)

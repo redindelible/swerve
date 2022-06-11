@@ -13,7 +13,7 @@ __all__ = ["ASTFunction", "ASTParameter", "ASTStmt", "ASTLetStmt", "ASTVarStmt",
     "ASTType", "ASTTypeIdent", "ASTFile", "ASTNode", "ASTProgram", "ASTTopLevel", "ASTStruct", "ASTTypeVariable", "ASTMethod",
     "ASTStructField", "ASTImport", "ASTBinaryExpr", "ASTForStmt", "ASTIfExpr", "ASTWhileStmt", "ASTTypeGeneric", "ASTGenericExpr",
     "ASTLessExpr", "ASTLessEqualExpr", "ASTGreaterExpr", "ASTGreaterEqualExpr", "ASTAttrAssign", "ASTTypeUnit", "ASTTypeFunction",
-    "ASTLambda", "ASTEqualExpr", "ASTNotEqualExpr", "ASTModExpr"]
+    "ASTLambda", "ASTEqualExpr", "ASTNotEqualExpr", "ASTModExpr", "ASTGenericFunction"]
 
 
 class Printer:
@@ -96,6 +96,28 @@ class ASTFunction(ASTTopLevel):
         self.parameters = parameters
         self.return_type = return_type
         self.body = body
+
+    def pretty_print(self, printer: Printer):
+        printer.print("Function:")
+        with printer.indent():
+            printer.print(f"Name={self.name}")
+            printer.print(f"Parameters:")
+            with printer.indent():
+                for param in self.parameters:
+                    param.pretty_print(printer)
+            printer.print(f"Return Type:")
+            with printer.indent():
+                self.return_type.pretty_print(printer)
+            printer.print(f"Body:")
+            with printer.indent():
+                for stmt in self.body.stmts:
+                    stmt.pretty_print(printer)
+
+
+class ASTGenericFunction(ASTFunction):
+    def __init__(self, name: str, type_vars: list[ASTTypeVariable], parameters: list[ASTParameter], return_type: ASTType, body: ASTBlockExpr, location: Location):
+        super().__init__(name, parameters, return_type, body, location)
+        self.type_vars = type_vars
 
     def pretty_print(self, printer: Printer):
         printer.print("Function:")

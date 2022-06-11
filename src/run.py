@@ -41,6 +41,7 @@ def main():
         infer_types(program)
     except CompilerMessage as msg:
         msg.display(stderr)
+        raise
         return
 
     try:

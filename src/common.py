@@ -62,15 +62,24 @@ class Location:
     def in_context(self) -> str:
         raise NotImplementedError()
 
+    def short_context(self) -> str:
+        raise NotImplementedError()
+
 
 class BuiltinLocation(Location):
     def in_context(self) -> str:
         return "(builtin definition)"
 
+    def short_context(self) -> str:
+        return "as a builtin"
+
 
 class CommandLineLocation(Location):
     def in_context(self) -> str:
         return "(in command line invocation)"
+
+    def short_context(self) -> str:
+        return "from the command line"
 
 
 class SourceLocation(Location):
@@ -102,3 +111,7 @@ class SourceLocation(Location):
         if caret_len < self.length:
             ctxt += ">"
         return ctxt
+
+    def short_context(self) -> str:
+        line_no, line_start, line = self.source.get_index_line(self.index)
+        return f"on line {line_no} of {self.source.path.name}"

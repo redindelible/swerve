@@ -155,6 +155,17 @@ class ParseState:
         self.expect(TokenType.FN)
         name = self.expect(TokenType.IDENT)
 
+        type_vars: list[ASTTypeVariable] = []
+        if self.match(TokenType.LEFT_BRACKET):
+            self.expect(TokenType.LEFT_BRACKET)
+            while not self.match(TokenType.RIGHT_BRACKET):
+                type_vars.append(self.parse_type_variable())
+                if self.match(TokenType.COMMA):
+                    self.advance()
+                else:
+                    break
+            self.expect(TokenType.RIGHT_BRACKET)
+
         parameters: list[ASTParameter] = []
         self.expect(TokenType.LEFT_PAREN)
         while not self.match(TokenType.RIGHT_PAREN):
@@ -174,7 +185,10 @@ class ParseState:
         ret_type = self.parse_type()
 
         body = self.parse_block()
-        return ASTFunction(name.text, parameters, ret_type, body, self.pop_loc())
+        if len(type_vars) > 0:
+            return ASTGenericFunction(name.text, type_vars, parameters, ret_type, body, self.pop_loc())
+        else:
+            return ASTFunction(name.text, parameters, ret_type, body, self.pop_loc())
 
     def parse_struct(self) -> ASTStruct:
         self.push_loc()

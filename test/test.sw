@@ -1,16 +1,14 @@
-fn for_f(i:int, high:int, body: (int) -> int) -> () {
-    body(i);
-    if (i < high - 1) {
-        i = i + 1;
-        for_f(i, high, body);
-    }
+
+struct Holder[T] {
+    val: T
+}
+
+
+fn to_holder[T](item: T) -> Holder[T] {
+    return Holder[T](item);
 }
 
 
 fn main() -> int {
-    let a: int = 0;
-
-    for_f(0, 10, |x| a = a + x);
-
-    return a;
+    return to_holder[int](1).val;
 }

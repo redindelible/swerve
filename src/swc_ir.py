@@ -104,6 +104,9 @@ class IRResolvedType(IRType):
     def __str__(self):
         raise NotImplementedError()
 
+    def __repr__(self):
+        return str(self)
+
     def __eq__(self, other: IRResolvedType):
         raise NotImplementedError()
 
@@ -199,9 +202,10 @@ class IRStructType(IRResolvedType):
 
 
 class IRGenericStructType(IRResolvedType):
-    def __init__(self, generic: IRGenericStruct):
+    def __init__(self, generic: IRGenericStruct, partial: list[IRResolvedType]):
         super().__init__()
         self.generic = generic
+        self.partial = partial
 
     def is_subtype(self, bound: IRResolvedType) -> bool:
         return self is bound
@@ -210,36 +214,13 @@ class IRGenericStructType(IRResolvedType):
         return False
 
     def __str__(self):
-        return f"struct '{self.generic.name}'"
+        return f"struct '{self.generic.name}[{', '.join(str(part) for part in self.partial)}]'"
 
     def __eq__(self, other: IRGenericStructType):
         return type(other) == IRGenericStructType and other.generic is self.generic
 
     def __hash__(self):
         return hash(self.generic)
-
-
-class IRGenericType(IRResolvedType):
-    def __init__(self, generic: IRGenericStruct, type_parameters: list[IRResolvedType]):
-        super().__init__()
-        self.generic = generic
-        self.type_parameters = type_parameters
-
-    def is_subtype(self, bound: IRResolvedType) -> bool:
-        # TODO this is just wrong
-        return self is bound
-
-    def is_concrete(self) -> bool:
-        return False
-
-    def __str__(self):
-        return f"{self.generic}[{', '.join(str(arg) for arg in self.type_parameters)}]"
-
-    def __eq__(self, other: IRGenericType):
-        return type(other) == IRGenericType and self.generic is other.generic and self.type_parameters == other.type_parameters
-
-    def __hash__(self):
-        return hash((self.generic, tuple(self.type_parameters)))
 
 
 class IRIntegerType(IRResolvedType):
@@ -329,7 +310,7 @@ class IRTypeVarType(IRResolvedType):
         return False
 
     def __str__(self):
-        return self.type_var.name
+        return f"Type Variable {self.type_var.name} defined {self.loc.short_context()}"
 
     def __eq__(self, other: IRTypeVarType):
         return type(other) == IRTypeVarType and self.type_var is other.type_var
@@ -359,11 +340,11 @@ class IRStruct(IRNode):
 
 class IRGenericStruct(IRStruct):
     def __init__(self, type_decl: IRTypeDecl, constructor: IRValueDecl, name: str, type_vars: list[IRTypeVariable], supertraits: list[IRType],
-                 fields: list[IRField], methods: list[IRMethod], generic_methods: list[IRGenericMethod]):
+                 fields: list[IRField], methods: list[IRMethod], generic_methods: list[IRGenericMethod], reifications: dict[tuple[IRResolvedType], IRStruct]):
         super().__init__(type_decl, constructor, name, supertraits, fields, methods)
         self.type_vars = type_vars
 
-        self.reifications: dict[tuple[IRResolvedType], IRStruct] = {}
+        self.reifications = reifications
 
 
 class IRField(IRNode):
@@ -418,7 +399,9 @@ class IRGenericFunction(IRNode):
         self.return_type = return_type
         self.body = body
 
-        self.function_type: IRFunctionType | None = None
+        self.function_type: IRGenericFunctionType | None = None
+
+        self.reifications: dict[tuple[IRResolvedType], IRFunction] = {}
 
 
 class IRParameter(IRNode):

@@ -247,14 +247,14 @@ class ResolveNames:
         struct_type_decl = self.struct_type_decls[struct]
 
         type_var_ns = self.push(Namespace())
-        type_vars = []
+        type_vars: list[IRTypeVariable] = []
         for type_var in struct.type_variables:
             if type_var.bound is None:
                 bound = None
             else:
                 bound = self.resolve_type(type_var.bound)
             type_decl = type_var_ns.declare_type(type_var.name, IRTypeDecl(IRUnresolvedUnknownType(), type_var.loc))
-            type_vars.append(IRTypeVariable(type_var.name, bound, type_decl))
+            type_vars.append(IRTypeVariable(type_var.name, bound, type_decl).set_loc(type_var.loc))
 
         supertraits = []
         for supertrait in struct.supertraits:
@@ -280,27 +280,39 @@ class ResolveNames:
             # program.functions.append(IRFunction(self.value_decls[method], method.name, params, ret_type, body))
         self.pop()
 
-        type = IRGenericStruct(struct_type_decl, self.value_decls[struct], struct.name, type_vars, supertraits, fields, [], [])
+        type = IRGenericStruct(struct_type_decl, self.value_decls[struct], struct.name, type_vars, supertraits, fields, [], [], {})
         struct_type_decl.type = type
 
         program.structs.append(type)
 
     def resolve_function(self, function: ASTFunction, program: IRProgram | None) -> IRFunction:
+        body_ns = self.push(Namespace())
+        type_vars = []
+        if isinstance(function, ASTGenericFunction):
+            for type_var in function.type_vars:
+                if type_var.bound is None:
+                    bound = None
+                else:
+                    bound = self.resolve_type(type_var.bound)
+                type_decl = body_ns.declare_type(type_var.name, IRTypeDecl(IRUnresolvedUnknownType(), type_var.loc))
+                type_vars.append(IRTypeVariable(type_var.name, bound, type_decl).set_loc(type_var.loc))
+
         ret_type = self.resolve_type(function.return_type)
 
-        body_ns = self.push(Namespace())
         params = []
         for param in function.parameters:
             param_decl = self.curr_ns.declare_value(param.name, IRValueDecl(IRUnresolvedUnknownType(), param.loc, True))
-            params.append(IRParameter(param_decl, param.name, self.resolve_type(param.type)))
+            params.append(IRParameter(param_decl, param.name, self.resolve_type(param.type)).set_loc(param.loc))
 
-        # print(body_ns, body_ns.value_names)
         body = self.resolve_body(function.body, self.pop())
-        func = IRFunction(self.value_decls[function], function.name, params, ret_type, body)
-
-        # print(body_ns, body_ns.value_names, body.declared)
+        if len(type_vars) > 0:
+            func = IRGenericFunction(self.value_decls[function], function.name, type_vars, params, ret_type, body).set_loc(function.loc)
+        else:
+            func = IRFunction(self.value_decls[function], function.name, params, ret_type, body).set_loc(function.loc)
 
         if function.name == "main" and program is not None:
+            if len(type_vars) > 0:
+                raise CompilerMessage(ErrorType.COMPILATION, "Main function cannot be generic", func.loc)
             program.main_func = func
         return func
 

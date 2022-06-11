@@ -18,7 +18,69 @@ class BidirectionalTypeInference:
         self.expected_return_type: IRResolvedType | None = None
         self.expected_return_loc: Location | None = None
 
-    def resolve_generic(self, generic: IRGenericStruct, arguments: list[IRResolvedType], loc: Location) -> IRStruct:
+        self.substitutions: list[dict[IRTypeVarType, IRResolvedType]] = []
+
+    def resolve_generic_struct(self, generic: IRGenericStruct, arguments: dict[IRTypeVarType, IRResolvedType], loc: Location) -> IRStruct:
+        if len(arguments) != len(generic.type_vars):
+            raise CompilerMessage(ErrorType.COMPILATION, f"Mismatched number of arguments to generic (expected {len(generic.type_vars)}, got {len(arguments)}):", loc, [
+                CompilerMessage(ErrorType.NOTE, f"Generic defined here:", generic.loc)
+            ])
+
+        if tuple(arguments.values()) in generic.reifications:
+            return generic.reifications[tuple(arguments.values())]
+
+        if any(isinstance(arg, IRTypeVarType) for arg in arguments.values()):
+            new_type_vars: list[IRTypeVariable] = []
+            for type_var in generic.type_vars:
+                new_type = arguments[cast(IRTypeVarType, type_var.type_decl.type)]
+                if isinstance(new_type, IRTypeVarType):
+                    new_type_vars.append(new_type.type_var)
+
+            struct = IRGenericStruct(
+                IRTypeDecl(IRUnresolvedUnknownType(), generic.type_decl.location),
+                IRValueDecl(IRUnresolvedUnknownType(), generic.constructor.location, False),
+                generic.name,
+                new_type_vars,
+                generic.supertraits,
+                [IRField(field.name, field.type).set_loc(field.loc) for field in generic.fields],
+                generic.methods,
+                [], generic.reifications
+            ).set_loc(loc)
+        else:
+            struct = IRStruct(
+                IRTypeDecl(IRUnresolvedUnknownType(), generic.type_decl.location),
+                IRValueDecl(IRUnresolvedUnknownType(), generic.constructor.location, False),
+                f"{generic.name}[{', '.join(str(arg) for arg in arguments)}]",
+                generic.supertraits,
+                [IRField(field.name, field.type).set_loc(field.loc) for field in generic.fields],
+                generic.methods
+            ).set_loc(loc)
+        generic.reifications[tuple(arguments.values())] = struct
+
+        field_types: list[IRParameterType] = []
+        for field in struct.fields:
+            field.type = self.substitute_types(field.type, arguments, field.loc)
+            field_types.append(IRParameterType(field.type, field.loc))
+
+        if isinstance(struct, IRGenericStruct):
+            struct.type_decl.type = IRGenericStructType(struct, list(arguments.values())).set_loc(loc)
+
+            def callback(type_args: list[IRResolvedType], loc_: Location) -> tuple[IRFunctionType, IRExpr]:
+                nonlocal struct; cast(IRGenericStruct, struct)
+                # TODO length check
+                resultant = self.resolve_generic_struct(struct, {type_var.type_decl.type: arg for type_var, arg in zip(struct.type_vars, type_args)}, loc_)
+                return cast(IRFunctionType, resultant.constructor.type), IRNameExpr(resultant.constructor)
+
+            # noinspection PyTypeChecker
+            struct.constructor.type = IRGenericFunctionType(struct.type_vars, field_types, struct.type_decl.type, callback).set_loc(struct.loc)
+        else:
+            struct.type_decl.type = IRStructType(struct).set_loc(loc)
+            struct.constructor.type = IRFunctionType([IRParameterType(field.type, field.loc) for field in struct.fields], struct.type_decl.type).set_loc(loc)
+
+        self.program.structs.append(struct)
+        return struct
+
+    def resolve_generic_function(self, generic: IRGenericFunction, arguments: list[IRResolvedType], loc: Location) -> IRFunction:
         if len(arguments) != len(generic.type_vars):
             raise CompilerMessage(ErrorType.COMPILATION, f"Mismatched number of arguments to generic (expected {len(generic.type_vars)}, got {len(arguments)}):", loc, [
                 CompilerMessage(ErrorType.NOTE, f"Generic defined here:", generic.loc)
@@ -30,29 +92,63 @@ class BidirectionalTypeInference:
         if any(isinstance(arg, IRTypeVarType) for arg in arguments):
             raise ValueError()
         else:
-            struct = IRStruct(
-                IRTypeDecl(IRUnresolvedUnknownType(), generic.type_decl.location),
-                IRValueDecl(IRUnresolvedUnknownType(), generic.constructor.location, False),
+            func = IRFunction(
+                IRValueDecl(IRUnresolvedUnknownType(), generic.decl.location, False),
                 f"{generic.name}[{', '.join(str(arg) for arg in arguments)}]",
-                generic.supertraits,
-                [IRField(field.name, field.type).set_loc(field.loc) for field in generic.fields],
-                generic.methods
-            ).set_loc(loc)
+                [IRParameter(IRValueDecl(param.decl.type, param.loc, True), param.name, param.type) for param in generic.parameters],
+                IRUnresolvedUnknownType(),
+                generic.body
+            ).set_loc(generic.loc)
+            generic.reifications[tuple(arguments)] = func
 
-            type_var_replacements = dict(zip((type_var.type_decl.type for type_var in generic.type_vars), arguments))
+            substitutions: dict[IRTypeVarType, IRResolvedType] = dict(zip((cast(IRTypeVarType, type_var.type_decl.type) for type_var in generic.type_vars), arguments))
 
-            for field in struct.fields:
-                if field.type in type_var_replacements:
-                    field.type = type_var_replacements[field.type]
+            for param in func.parameters:
+                param.decl.type = param.type = self.substitute_types(param.type, substitutions, param.loc)
                     # field.loc = loc
+            func.return_type = self.substitute_types(cast(IRResolvedType, generic.return_type), substitutions, func.loc)
+            # print(func.return_type)
+            func.function_type = func.decl.type = IRFunctionType([IRParameterType(param.type, param.loc) for param in func.parameters], func.return_type)
 
-            struct.type_decl.type = IRStructType(struct).set_loc(loc)
-            # noinspection PyTypeChecker
-            struct.constructor.type = IRFunctionType([IRParameterType(field.type, field.loc) for field in struct.fields], struct.type_decl.type).set_loc(loc)
+            old_ret_type, self.expected_return_type = self.expected_return_type, func.return_type
+            old_ret_loc, self.expected_return_loc = self.expected_return_loc, func.loc
 
-            self.program.structs.append(struct)
-            generic.reifications[tuple(arguments)] = struct
-            return struct
+            func.body = SubstituteNodes(substitutions, {old_param.decl: new_param.decl for new_param, old_param in zip(func.parameters, generic.parameters)}, self).perform_substitutions(func.body)
+            # self.substitutions.append(substitutions)
+            for stmt in func.body.body:
+                self.infer_stmt(stmt)
+            # self.substitutions.pop()
+
+            self.expected_return_type = old_ret_type
+            self.expected_return_loc = old_ret_loc
+
+            self.program.functions.append(func)
+            return func
+
+    def substitute_types(self, type: IRResolvedType, substitutions: dict[IRType, IRResolvedType], loc: Location) -> IRResolvedType:
+        if isinstance(type, (IRIntegerType, IRStringType, IRUnitType, IRBoolType, IRFunctionType, IRStructType)):
+            # TODO possibly replace with type.is_concrete()?
+            return type
+        elif isinstance(type, IRTypeVarType):
+            if type in substitutions:
+                return substitutions[type]
+            else:
+                return type
+        elif isinstance(type, IRGenericStructType):
+            arguments: dict[IRTypeVarType, IRResolvedType] = {}
+            for type_var in type.generic.type_vars:
+                type_var_type = cast(IRTypeVarType, type_var.type_decl.type)
+                if type_var_type in substitutions:
+                    arguments[type_var_type] = substitutions[type_var_type]
+                else:
+                    arguments[type_var_type] = type_var_type
+            struct = self.resolve_generic_struct(type.generic, arguments, loc)
+            return cast(IRResolvedType, struct.type_decl.type)
+        elif isinstance(type, IRGenericFunctionType):
+            # TODO
+            raise ValueError()
+        else:
+            raise ValueError(repr(type))
 
     def infer_types(self):
         for struct in self.program.structs:
@@ -64,19 +160,21 @@ class BidirectionalTypeInference:
         for function in self.program.functions:
             self.infer_function_type(function)
 
-        for function in self.program.functions:
+        for function in self.program.functions[:]:
             self.infer_function_body(function)
 
     def infer_struct_type(self, struct: IRStruct):
         if isinstance(struct, IRGenericStruct):
-            struct.type_decl.type = IRGenericStructType(struct)
+            type_vars = []
+            for type_var in struct.type_vars:
+                type = IRTypeVarType(type_var).set_loc(type_var.loc)
+                type_var.type_decl.type = type
+                type_vars.append(type)
+            struct.type_decl.type = IRGenericStructType(struct, type_vars).set_loc(struct.loc)
         else:
-            struct.type_decl.type = IRStructType(struct)
+            struct.type_decl.type = IRStructType(struct).set_loc(struct.loc)
 
     def infer_struct_body(self, struct: IRStruct):
-        if isinstance(struct, IRGenericStruct):
-            for type_var in struct.type_vars:
-                type_var.type_decl.type = IRTypeVarType(type_var)
         field_types: list[IRParameterType] = []
         for field in struct.fields:
             field.type = resolved_type = self.resolve_type(field.type)
@@ -86,7 +184,10 @@ class BidirectionalTypeInference:
 
         if isinstance(struct, IRGenericStruct):
             def callback(type_args: list[IRResolvedType], loc: Location) -> tuple[IRFunctionType, IRExpr]:
-                resultant = self.resolve_generic(cast(IRGenericStruct, struct), type_args, loc)
+                nonlocal struct
+                struct = cast(IRGenericStruct, struct)
+                # TODO length check
+                resultant = self.resolve_generic_struct(struct, {type_var.type_decl.type: arg for type_var, arg in zip(struct.type_vars, type_args)}, loc)
                 return cast(IRFunctionType, resultant.constructor.type), IRNameExpr(resultant.constructor)
 
             # noinspection PyTypeChecker
@@ -96,6 +197,9 @@ class BidirectionalTypeInference:
             struct.constructor.type = IRFunctionType(field_types, struct.type_decl.type).set_loc(struct.loc)
 
     def infer_function_type(self, function: IRFunction):
+        if isinstance(function, IRGenericFunction):
+            for type_var in function.type_vars:
+                type_var.type_decl.type = IRTypeVarType(type_var).set_loc(type_var.loc)
         param_types: list[IRParameterType] = []
         for param in function.parameters:
             resolved = self.resolve_type(param.type)
@@ -110,7 +214,15 @@ class BidirectionalTypeInference:
             raise ValueError()
         function.return_type = resolved
 
-        function.function_type = function.decl.type = IRFunctionType(param_types, resolved).set_loc(function.loc)
+        if isinstance(function, IRGenericFunction):
+            def callback(type_args: list[IRResolvedType], loc: Location) -> tuple[IRFunctionType, IRExpr]:
+                resultant = self.resolve_generic_function(cast(IRGenericFunction, function), type_args, loc)
+                return cast(IRFunctionType, resultant.decl.type), IRNameExpr(resultant.decl)
+
+            f_type = IRGenericFunctionType(function.type_vars, param_types, resolved, callback).set_loc(function.loc)
+        else:
+            f_type = IRFunctionType(param_types, resolved).set_loc(function.loc)
+        function.function_type = function.decl.type = f_type
 
         if not function.body.always_returns():
             if function.return_type != IRUnitType():
@@ -118,7 +230,7 @@ class BidirectionalTypeInference:
 
     def infer_function_body(self, function: IRFunction):
         self.expected_return_type = function.return_type
-        self.expected_return_loc = function.return_type
+        self.expected_return_loc = function.loc
 
         for stmt in function.body.body:
             self.infer_stmt(stmt)
@@ -430,10 +542,117 @@ class BidirectionalTypeInference:
                 if not isinstance(generic_type, IRGenericStructType):
                     raise ValueError()
                 type_args = [self.resolve_type(type_arg) for type_arg in type.type_args]
-                resolved = self.resolve_generic(generic_type.generic, type_args, type.loc)
+                resolved = self.resolve_generic_struct(generic_type.generic, {type_var.type_decl.type: arg for type_var, arg in zip(generic_type.generic.type_vars, type_args)}, type.loc)
                 # noinspection PyTypeChecker
                 return resolved.type_decl.type
             elif isinstance(type, IRUnresolvedFunctionType):
                 return IRFunctionType([IRParameterType(self.resolve_type(param), param.loc) for param in type.parameters], self.resolve_type(type.ret_type)).set_loc(type.loc)
             else:
                 raise ValueError(type)
+
+
+class SubstituteNodes:
+    def __init__(self, substitutions: dict[IRTypeVarType, IRResolvedType], value_decl: dict[IRValueDecl, IRValueDecl], inferrer: BidirectionalTypeInference):
+        self.substitutions = substitutions
+        self.inferrer = inferrer
+        self.value_decl: dict[IRValueDecl, IRValueDecl] = value_decl
+
+    def perform_substitutions(self, block: IRBlock) -> IRBlock:
+        new_stmts = []
+        for stmt in block.body:
+            new_stmts.append(self.substitute_stmt(stmt))
+        return IRBlock(new_stmts, [self.value_decl[decl] for decl in self.value_decl])
+
+    def substitute_stmt(self, stmt: IRStmt) -> IRStmt:
+        if isinstance(stmt, IRExprStmt):
+            return IRExprStmt(self.substitute_expr(stmt.expr)).set_loc(stmt.loc)
+        elif isinstance(stmt, IRReturnStmt):
+            return IRReturnStmt(self.substitute_expr(stmt.expr)).set_loc(stmt.loc)
+        elif isinstance(stmt, IRDeclStmt):
+            decl = IRValueDecl(self.substitute_type(stmt.type), stmt.loc, True)
+            self.value_decl[stmt.decl] = decl
+            return IRDeclStmt(decl, decl.type, self.substitute_expr(stmt.init)).set_loc(stmt.loc)
+        elif isinstance(stmt, IRWhileStmt):
+            return IRWhileStmt(self.substitute_expr(stmt.cond), self.substitute_expr(stmt.body)).set_loc(stmt.loc)
+        else:
+            raise ValueError(type(stmt))
+
+    def substitute_expr(self, expr: IRExpr) -> IRExpr:
+        if isinstance(expr, IRIntegerExpr):
+            return IRIntegerExpr(expr.number).set_loc(expr.loc)
+        elif isinstance(expr, IRNameExpr):
+            if expr.name.is_runtime:
+                return IRNameExpr(self.value_decl[expr.name]).set_loc(expr.loc)
+            else:
+                return IRNameExpr(expr.name).set_loc(expr.loc)
+        elif isinstance(expr, IRBinaryExpr):
+            return IRBinaryExpr(expr.op, self.substitute_expr(expr.left), self.substitute_expr(expr.right)).set_loc(expr.loc)
+        elif isinstance(expr, IRAttrExpr):
+            return IRAttrExpr(self.substitute_expr(expr.object), expr.attr).set_loc(expr.loc)
+        elif isinstance(expr, IRCallExpr):
+            return IRCallExpr(self.substitute_expr(expr.callee), [self.substitute_expr(arg) for arg in expr.arguments]).set_loc(expr.loc)
+        elif isinstance(expr, IRGenericExpr):
+            return IRGenericExpr(self.substitute_expr(expr.generic), [self.substitute_type(arg) for arg in expr.arguments]).set_loc(expr.loc)
+        elif isinstance(expr, IRBlock):
+            return IRBlock([self.substitute_stmt(stmt) for stmt in expr.body], [self.value_decl[decl] for decl in self.value_decl]).set_loc(expr.loc)
+        elif isinstance(expr, IRIf):
+            return IRIf(self.substitute_expr(expr.cond), self.substitute_expr(expr.then_do), None if expr.else_do is None else self.substitute_expr(expr.else_do)).set_loc(expr.loc)
+        elif isinstance(expr, IRAssign):
+            # TODO check if can be assigned because apparently this can be done after the normal infer
+            return IRAssign(self.value_decl[expr.name], expr.op, self.substitute_expr(expr.value))
+        elif isinstance(expr, IRAttrAssign):
+            return IRAttrAssign(self.substitute_expr(expr.obj), expr.attr, expr.op, self.substitute_expr(expr.value))
+        elif isinstance(expr, IRLambda):
+            parameters = []
+            for param in expr.parameters:
+                type_ = self.substitute_type(param.type)
+                decl = IRValueDecl(type_, param.loc, True)
+                self.value_decl[param.decl] = decl
+                parameters.append(IRParameter(decl, param.name, type_).set_loc(param.loc))
+            return IRLambda(
+                [self.value_decl[decl] for decl in expr.exterior_names],
+                parameters, self.substitute_type(expr.ret_type), cast(IRBlock, self.substitute_expr(expr.body))
+            ).set_loc(expr.loc)
+        elif isinstance(expr, IRNegExpr):
+            return IRNegExpr(self.substitute_expr(expr.right)).set_loc(expr.loc)
+        elif isinstance(expr, IRNotExpr):
+            return IRNotExpr(self.substitute_expr(expr.right)).set_loc(expr.loc)
+        else:
+            raise ValueError(type(expr))
+
+    def substitute_type(self, type: IRType) -> IRResolvedType:
+        if isinstance(type, IRBoolType):
+            return IRBoolType().set_loc(type.loc)
+        elif isinstance(type, IRIntegerType):
+            return IRIntegerType(type.bits).set_loc(type.loc)
+        elif isinstance(type, IRUnitType):
+            return IRUnitType().set_loc(type.loc)
+        elif isinstance(type, IRUnresolvedNameType):
+            return self.substitute_type(type.decl.type).set_loc(type.loc)
+        elif isinstance(type, IRUnresolvedUnknownType):
+            return IRUnresolvedUnknownType().set_loc(type.loc)
+        elif isinstance(type, IRTypeVarType):
+            if type in self.substitutions:
+                return self.substitutions[type]
+            else:
+                return type
+        elif isinstance(type, IRUnresolvedFunctionType):
+            return IRFunctionType([IRParameterType(self.substitute_type(self.inferrer.resolve_type(param)), param.loc) for param in type.parameters],
+                                  self.substitute_type(self.inferrer.resolve_type(type.ret_type))).set_loc(type.loc)
+        elif isinstance(type, IRUnresolvedGenericType):
+            return self.inferrer.resolve_type(type)
+        elif isinstance(type, IRFunctionType):
+            return IRFunctionType([IRParameterType(self.substitute_type(param.type), param.loc) for param in type.param_types],
+                                  self.substitute_type(type.ret_type)).set_loc(type.loc)
+        elif isinstance(type, IRGenericFunctionType):
+            raise ValueError()
+        elif isinstance(type, IRStructType):
+            return type
+        elif isinstance(type, IRGenericStructType):
+            if any(type_var.type_decl.type in self.substitutions for type_var in type.generic.type_vars):
+                resolved = self.inferrer.resolve_generic_struct(type.generic, {type_var.type_decl.type: self.substitute_type(arg.type_decl.type) for type_var, arg in zip(type.generic.type_vars, type.generic.type_vars)}, type.loc)
+                return cast(IRResolvedType, resolved.type_decl.type)
+            else:
+                return type
+        else:
+            raise ValueError(type.__class__)
