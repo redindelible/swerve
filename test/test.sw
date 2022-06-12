@@ -2,7 +2,7 @@ import io::putchar
 
 
 fn main() -> int {
-    putchar(90);
+    putchar(88);
 
     return 0;
 }

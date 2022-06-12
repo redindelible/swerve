@@ -27,9 +27,13 @@ def emit_module(module: ir.Module, output: Path):
     um_path, ucrt_path = sdk_paths
 
     object_file = tempfile.NamedTemporaryFile(delete=False)
-    object_file.write(object_code)
+    try:
+        with object_file:
+            object_file.write(object_code)
 
-    result = subprocess.Popen([LINKER_PATH, object_file.name, f"/libpath:{lib_path}", f"/libpath:{um_path}", f"/libpath:{ucrt_path}", "/DEFAULTLIB:libcmt.lib", f"/out:{output}"], shell=False)
+        result = subprocess.run([LINKER_PATH, object_file.name, f"/libpath:{lib_path}", f"/libpath:{um_path}", f"/libpath:{ucrt_path}", "/DEFAULTLIB:libcmt.lib", f"/out:{output}"], shell=False)
+    finally:
+        Path(object_file.name).unlink()
 
 
 def find_vs_lib_path(platform: str) -> Path | None:
