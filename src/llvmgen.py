@@ -9,6 +9,12 @@ from llvmlite import binding as llvm
 from random import shuffle
 
 
+i32 = ir.IntType(32)
+i64 = ir.IntType(64)
+boolean = ir.IntType(1)
+unit = ir.IntType(1)
+
+
 def generate_llvm(program: IRProgram) -> ir.Module:
     llvm.initialize()
     llvm.initialize_native_target()
@@ -51,7 +57,7 @@ class LLVMGen:
         self.builder = ir.IRBuilder()
 
         self.closures: list[Closure] = []
-        self.recent_closure: list[ir.Value] = []
+        self.recent_closure: list[ir.Value] = [ir.Constant(self.void_p_type, None)]
         self.current_block: IRBlock | None = None
         self.function_ir: dict[IRFunction, ir.Function] = {}
         self.decl_values: dict[IRValueDecl, ir.Value] = {}
@@ -66,6 +72,8 @@ class LLVMGen:
 
     def load_external_functions(self):
         self.external_functions["malloc"] = ir.Function(self.module, ir.FunctionType(self.void_p_type, [self.integer_types[64]]), "malloc")
+        self.external_functions["calloc"] = ir.Function(self.module, ir.FunctionType(self.void_p_type, [self.integer_types[64], self.integer_types[64]]), "calloc")
+        self.external_functions["exit"] = ir.Function(self.module, ir.FunctionType(ir.VoidType(), [self.integer_types[64]]), "exit")
 
     def size_of(self, type: ir.Type) -> int:
         return type.get_abi_size(self.target_data)
@@ -85,9 +93,14 @@ class LLVMGen:
     def load_structs(self):
         for struct in self.program.structs:
             if not isinstance(struct, IRGenericStruct):
-                struct_type = self.module.context.get_identified_type(struct.name)
+                struct_type = self.module.context.get_identified_type(self.new_name(struct.name))
                 # noinspection PyTypeChecker
                 self.struct_types[struct.type_decl.type] = ir.PointerType(struct_type)
+
+        for type, array_variant in self.program.array_variants.items():
+            if type.is_concrete():
+                struct_type = self.module.context.get_identified_type(self.new_name(array_variant.array.name))
+                self.struct_types[cast(IRStructType, array_variant.array.type_decl.type)] = ir.PointerType(struct_type)
 
         for struct in self.program.structs:
             if not isinstance(struct, IRGenericStruct):
@@ -97,6 +110,126 @@ class LLVMGen:
                 struct_type.set_body(*(self.generate_type(field.type) for field in struct.fields))
 
                 self.generate_constructor(struct, struct_p_type)
+
+        for type, array_variant in self.program.array_variants.items():
+            if type.is_concrete():
+                self.generate_array_variant(array_variant)
+
+    def generate_array_variant(self, variant: ArrayVariant):
+        # noinspection PyTypeChecker
+        struct_p_type: ir.PointerType = self.struct_types[variant.array.type_decl.type]
+        struct_type: ir.IdentifiedStructType = struct_p_type.pointee
+        struct_type.set_body(self.generate_type(variant.type).as_pointer(), ir.IntType(64))
+
+        self.generate_array_constructor(variant, struct_type)
+
+        self.generate_array_get(variant, struct_type)
+        self.generate_array_set(variant, struct_type)
+
+    def generate_array_set(self, variant: ArrayVariant, struct_type: ir.IdentifiedStructType):
+        set_value_type = self.generate_type(variant.set.type)
+        # noinspection PyUnresolvedReferences
+        set_type: ir.FunctionType = set_value_type.pointee.elements[0].pointee
+        set = ir.Function(self.module, set_type, self.new_name(f"{struct_type.name}::set"))
+
+        # noinspection PyUnresolvedReferences
+        set_value = ir.GlobalVariable(self.module, set_value_type.pointee, f"obj_{set.name}")
+        set_value.global_constant = True
+        set_value.initializer = ir.Constant(set_value.type.pointee, [set, ir.Constant(self.void_p_type, None)])
+        self.decl_values[variant.set] = set_value
+
+        entry_block = set.append_basic_block("entry")
+        err_block = set.append_basic_block("err")
+        closure, arr, index, value = set.args
+        with self.builder.goto_block(entry_block):
+            with self.builder.if_then(self.builder.icmp_signed("<", index, ir.Constant(ir.IntType(64), 0))):
+                self.builder.branch(err_block)
+            arr_size = self.builder.load(self.gep(arr, [0, 1]))
+            with self.builder.if_then(self.builder.icmp_signed(">=", index, arr_size)):
+                self.builder.branch(err_block)
+            field_ptr = self.builder.gep(arr, [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 0)])
+            array = self.builder.load(field_ptr)
+            element_ptr = self.builder.gep(array, [index])
+            self.builder.store(value, element_ptr)
+            self.builder.ret(self.unit)
+        with self.builder.goto_block(err_block):
+            self.builder.call(self.external_functions["exit"], [i64(-1)])
+            self.builder.unreachable()
+
+    def generate_array_get(self, variant: ArrayVariant, struct_type: ir.IdentifiedStructType):
+        get_value_type = self.generate_type(variant.get.type)
+        # noinspection PyUnresolvedReferences
+        get_type: ir.FunctionType = get_value_type.pointee.elements[0].pointee
+        get = ir.Function(self.module, get_type, self.new_name(f"{struct_type.name}::get"))
+
+        # noinspection PyUnresolvedReferences
+        get_value = ir.GlobalVariable(self.module, get_value_type.pointee, f"obj_{get.name}")
+        get_value.global_constant = True
+        get_value.initializer = ir.Constant(get_value.type.pointee, [get, ir.Constant(self.void_p_type, None)])
+        self.decl_values[variant.get] = get_value
+
+        entry_block = get.append_basic_block("entry")
+        err_block = get.append_basic_block("err")
+        closure, arr, index = get.args
+        with self.builder.goto_block(entry_block):
+            with self.builder.if_then(self.builder.icmp_signed("<", index, ir.Constant(ir.IntType(64), 0))):
+                self.builder.branch(err_block)
+            arr_size = self.builder.load(self.gep(arr, [0, 1]))
+            with self.builder.if_then(self.builder.icmp_signed(">=", index, arr_size)):
+                self.builder.branch(err_block)
+            field_ptr = self.builder.gep(arr, [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 0)])
+            array = self.builder.load(field_ptr)
+            element_ptr = self.builder.gep(array, [index])
+            self.builder.ret(self.builder.load(element_ptr))
+        with self.builder.goto_block(err_block):
+            self.builder.call(self.external_functions["exit"], [i64(-1)])
+            self.builder.unreachable()
+
+    def generate_array_constructor(self, variant: ArrayVariant, struct_type: ir.IdentifiedStructType):
+        constructor_value_type = self.generate_type(variant.constructor.type)
+        value_type: ir.Type = struct_type.elements[0].pointee
+        # noinspection PyUnresolvedReferences
+        constructor_type: ir.FunctionType = constructor_value_type.pointee.elements[0].pointee
+        constructor = ir.Function(self.module, constructor_type, self.new_name(f"{struct_type.name}_constructor"))
+
+        # noinspection PyUnresolvedReferences
+        constructor_value = ir.GlobalVariable(self.module, constructor_value_type.pointee, f"obj_{constructor.name}")
+        constructor_value.global_constant = True
+        constructor_value.initializer = ir.Constant(constructor_value.type.pointee, [constructor, ir.Constant(self.void_p_type, None)])
+        self.decl_values[variant.constructor] = constructor_value
+
+        self.builder = ir.IRBuilder(constructor.append_basic_block("entry"))
+        mem = self.builder.call(self.external_functions["malloc"], [ir.Constant(ir.IntType(64), self.size_of(struct_type))])
+        obj = self.builder.bitcast(mem, struct_type.as_pointer())
+
+        closure, size, fn_struct_p = constructor.args
+        fn_ptr = self.builder.load(self.gep(fn_struct_p, [0, 0]))
+        closure_ptr = self.builder.load(self.gep(fn_struct_p, [0, 1]))
+
+        # alloc_size = self.builder.mul(i64(self.size_of(value_type)), size)
+        memory = self.builder.call(self.external_functions["calloc"], [size, i64(self.size_of(value_type))])
+        memory = self.builder.bitcast(memory, value_type.as_pointer())
+        self.builder.store(memory, self.gep(obj, [0, 0]))
+        self.builder.store(size, self.gep(obj, [0, 1]))
+
+        counter = self.builder.alloca(ir.IntType(64))
+        self.builder.store(ir.Constant(ir.IntType(64), 0), counter)
+        cond_block = self.builder.append_basic_block()
+        body_block = self.builder.append_basic_block()
+        after_block = self.builder.append_basic_block()
+        self.builder.branch(cond_block)
+        with self.builder.goto_block(cond_block):
+            self.builder.cbranch(self.builder.icmp_signed("<", self.builder.load(counter), size), body_block,
+                                 after_block)
+
+        with self.builder.goto_block(body_block):
+            value = self.builder.call(fn_ptr, [closure_ptr] + [self.builder.load(counter)])
+            self.builder.store(value, self.builder.gep(memory, [self.builder.load(counter)]))
+            self.builder.store(self.builder.add(self.builder.load(counter), ir.Constant(ir.IntType(64), 1)), counter)
+            self.builder.branch(cond_block)
+
+        with self.builder.goto_block(after_block):
+            self.builder.ret(obj)
 
     def generate_constructor(self, struct: IRStruct, struct_type: ir.PointerType):
         constructor_type = ir.FunctionType(struct_type, [self.void_p_type] + [self.generate_type(field.type) for field in struct.fields])

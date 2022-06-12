@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import Callable
-from common import Location, BuiltinLocation
+from common import Location, BuiltinLocation, NamedTuple
 
 
 # __all__ = []
@@ -319,12 +319,22 @@ class IRTypeVarType(IRResolvedType):
         return hash(self.type_var)
 
 
+class ArrayVariant(NamedTuple):
+    type: IRResolvedType
+    array: IRStruct
+    constructor: IRValueDecl
+    get: IRValueDecl
+    set: IRValueDecl
+
+
 class IRProgram:
     def __init__(self, functions: list[IRFunction], structs: list[IRStruct]):
         self.functions = functions
         self.structs = structs
 
         self.main_func: IRFunction | None = None
+
+        self.array_variants: dict[IRResolvedType, ArrayVariant] = {}
 
 
 class IRStruct(IRNode):
