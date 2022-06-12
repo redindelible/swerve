@@ -101,7 +101,7 @@ class ParseState:
         while self.curr.type != TokenType.EOF:
             if self.match(TokenType.IMPORT):
                 top_levels.extend(self.parse_import())
-            elif self.match(TokenType.FN):
+            elif self.match(TokenType.FN) or self.match(TokenType.EXTERN):
                 top_levels.append(self.parse_function())
             else:
                 top_levels.append(self.parse_struct())
@@ -152,6 +152,11 @@ class ParseState:
 
     def parse_function(self) -> ASTFunction:
         self.push_loc()
+        if self.match(TokenType.EXTERN):
+            is_extern = True
+            self.advance()
+        else:
+            is_extern = False
         self.expect(TokenType.FN)
         name = self.expect(TokenType.IDENT)
 
@@ -184,11 +189,17 @@ class ParseState:
         self.expect(TokenType.ARROW)
         ret_type = self.parse_type()
 
-        body = self.parse_block()
+        if is_extern:
+            semicolon = self.expect(TokenType.SEMICOLON)
+            body = ASTBlockExpr([], False, semicolon.location)
+        else:
+            body = self.parse_block()
         if len(type_vars) > 0:
+            if is_extern:
+                raise CompilerMessage(ErrorType.PARSE, "Generic functions cannot be marked 'extern'", self.pop_loc())
             return ASTGenericFunction(name.text, type_vars, parameters, ret_type, body, self.pop_loc())
         else:
-            return ASTFunction(name.text, parameters, ret_type, body, self.pop_loc())
+            return ASTFunction(name.text, is_extern, parameters, ret_type, body, self.pop_loc())
 
     def parse_struct(self) -> ASTStruct:
         self.push_loc()

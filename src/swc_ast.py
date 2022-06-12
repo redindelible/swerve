@@ -90,9 +90,10 @@ class ASTImport(ASTTopLevel):
 
 
 class ASTFunction(ASTTopLevel):
-    def __init__(self, name: str, parameters: list[ASTParameter], return_type: ASTType, body: ASTBlockExpr, location: Location):
+    def __init__(self, name: str, is_extern: bool, parameters: list[ASTParameter], return_type: ASTType, body: ASTBlockExpr, location: Location):
         super().__init__(location)
         self.name = name
+        self.is_extern = is_extern
         self.parameters = parameters
         self.return_type = return_type
         self.body = body
@@ -116,7 +117,7 @@ class ASTFunction(ASTTopLevel):
 
 class ASTGenericFunction(ASTFunction):
     def __init__(self, name: str, type_vars: list[ASTTypeVariable], parameters: list[ASTParameter], return_type: ASTType, body: ASTBlockExpr, location: Location):
-        super().__init__(name, parameters, return_type, body, location)
+        super().__init__(name, False, parameters, return_type, body, location)
         self.type_vars = type_vars
 
     def pretty_print(self, printer: Printer):

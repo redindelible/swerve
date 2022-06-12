@@ -328,7 +328,7 @@ class ArrayVariant(NamedTuple):
 
 
 class IRProgram:
-    def __init__(self, functions: list[IRFunction], structs: list[IRStruct]):
+    def __init__(self, functions: list[IRFunction], structs: list[IRStruct], extern_functions: list[IRFunction]):
         self.functions = functions
         self.structs = structs
 
@@ -403,8 +403,9 @@ class IRTypeVariable(IRNode):
 
 
 class IRFunction(IRNode):
-    def __init__(self, decl: IRValueDecl, name: str, parameters: list[IRParameter], return_type: IRType, body: IRBlock):
+    def __init__(self, is_extern: bool, decl: IRValueDecl, name: str, parameters: list[IRParameter], return_type: IRType, body: IRBlock):
         super().__init__()
+        self.is_extern = is_extern
         self.decl = decl
         self.name = name
         self.parameters = parameters

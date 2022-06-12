@@ -278,45 +278,61 @@ class LLVMGen:
         entry_block = func.append_basic_block("entry")
         self.builder = ir.IRBuilder(entry_block)
 
-        self.current_block = function.body
-        count = 1
-        closed: list[IRValueDecl] = []
-        for decl in function.body.declared:
-            if decl.put_in_closure:
-                closed.append(decl)
-                decl.closure_index = count
-                count += 1
-        # print(function.body.declared)
-        if len(closed) > 0:
-            closure_type = ir.LiteralStructType([self.void_p_type] + [self.generate_type(var.type) for var in closed])
-            closure = self.builder.call(self.external_functions["malloc"], [ir.Constant(self.integer_types[64], self.size_of(closure_type))])
-            closure = self.builder.bitcast(closure, ir.PointerType(closure_type))
-            self.recent_closure.append(closure)
-            self.builder.store(ir.Constant(self.void_p_type, None), self.gep(closure, [0, 0]))
-            self.closures.append(Closure(closure, closure_type, function.body))
-
-        for ir_arg, llvm_arg in zip(function.parameters, func.args[1:]):
-            if ir_arg.decl.put_in_closure:
-                closure_ptr = self.builder.gep(self.closures[-1].value, [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), ir_arg.decl.closure_index)])
-                self.builder.store(llvm_arg, closure_ptr)
+        if function.is_extern:
+            f_type = func.function_type
+            if isinstance(function.function_type.ret_type, IRUnitType):
+                ret_type = ir.VoidType()
+                is_void_ret = True
             else:
-                arg_slot = self.decl_values[ir_arg.decl] = self.builder.alloca(self.generate_type(ir_arg.type))
-                self.builder.store(llvm_arg, arg_slot)
-
-        for stmt in function.body.body:
-            self.generate_stmt(stmt)
-
-        self.current_block = None
-        if len(closed) > 0:
-            self.closures.pop()
-            self.recent_closure.pop()
-
-        if self.builder.block.terminator is None:
-            if function.body.always_returns():
-                self.builder.unreachable()
-            else:
+                ret_type = f_type.return_type
+                is_void_ret = False
+            c_func_type = ir.FunctionType(ret_type, f_type.args[1:])
+            c_func = ir.Function(self.module, c_func_type, function.name)
+            value = self.builder.call(c_func, func.args[1:])
+            if is_void_ret:
                 self.builder.ret(self.unit)
-        self.builder = ir.IRBuilder()
+            else:
+                self.builder.ret(value)
+        else:
+            self.current_block = function.body
+            count = 1
+            closed: list[IRValueDecl] = []
+            for decl in function.body.declared:
+                if decl.put_in_closure:
+                    closed.append(decl)
+                    decl.closure_index = count
+                    count += 1
+            # print(function.body.declared)
+            if len(closed) > 0:
+                closure_type = ir.LiteralStructType([self.void_p_type] + [self.generate_type(var.type) for var in closed])
+                closure = self.builder.call(self.external_functions["malloc"], [ir.Constant(self.integer_types[64], self.size_of(closure_type))])
+                closure = self.builder.bitcast(closure, ir.PointerType(closure_type))
+                self.recent_closure.append(closure)
+                self.builder.store(ir.Constant(self.void_p_type, None), self.gep(closure, [0, 0]))
+                self.closures.append(Closure(closure, closure_type, function.body))
+
+            for ir_arg, llvm_arg in zip(function.parameters, func.args[1:]):
+                if ir_arg.decl.put_in_closure:
+                    closure_ptr = self.builder.gep(self.closures[-1].value, [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), ir_arg.decl.closure_index)])
+                    self.builder.store(llvm_arg, closure_ptr)
+                else:
+                    arg_slot = self.decl_values[ir_arg.decl] = self.builder.alloca(self.generate_type(ir_arg.type))
+                    self.builder.store(llvm_arg, arg_slot)
+
+            for stmt in function.body.body:
+                self.generate_stmt(stmt)
+
+            self.current_block = None
+            if len(closed) > 0:
+                self.closures.pop()
+                self.recent_closure.pop()
+
+            if self.builder.block.terminator is None:
+                if function.body.always_returns():
+                    self.builder.unreachable()
+                else:
+                    self.builder.ret(self.unit)
+            self.builder = ir.IRBuilder()
 
     def generate_stmt(self, stmt: IRStmt):
         if isinstance(stmt, IRDeclStmt):

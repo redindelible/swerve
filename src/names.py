@@ -94,7 +94,7 @@ def validate_name(name: str, loc: Location):
 class ResolveNames:
     def __init__(self, program: ASTProgram):
         self.program = program
-        self.ir_program = IRProgram([], [])
+        self.ir_program = IRProgram([], [], [])
 
         self.program_namespace = Namespace()
         self.namespaces: list[Namespace] = []
@@ -402,7 +402,7 @@ class ResolveNames:
         if len(type_vars) > 0:
             func = IRGenericFunction(self.value_decls[function], function.name, type_vars, params, ret_type, body).set_loc(function.loc)
         else:
-            func = IRFunction(self.value_decls[function], function.name, params, ret_type, body).set_loc(function.loc)
+            func = IRFunction(function.is_extern, self.value_decls[function], function.name, params, ret_type, body).set_loc(function.loc)
 
         if function.name == "main" and is_main_file:
             if len(type_vars) > 0:

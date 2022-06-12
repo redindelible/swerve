@@ -59,6 +59,7 @@ class TokenType(Enum):
     ELSE = "`else`"
     WHILE = "`while`"
     FOR = "`for`"
+    EXTERN = "`extern`"
     IDENT = "an identifier"
     BINARY = "a binary literal"
     HEX = "a hexadecimal literal"
@@ -85,6 +86,7 @@ SIMPLE_TOKENS = {
 
 KEYWORDS = {
     "fn": TokenType.FN,
+    "extern": TokenType.EXTERN,
     "return": TokenType.RETURN,
     "let": TokenType.LET,
     "var": TokenType.VAR,

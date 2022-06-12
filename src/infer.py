@@ -224,7 +224,7 @@ class BidirectionalTypeInference:
             f_type = IRFunctionType(param_types, function.return_type).set_loc(function.loc)
         function.function_type = function.decl.type = f_type
 
-        if not function.body.always_returns() and function.return_type != IRUnitType():
+        if not function.is_extern and function.return_type != IRUnitType() and not function.body.always_returns() :
             raise CompilerMessage(ErrorType.COMPILATION, f"Cannot prove that function always has a return value:", function.loc)
 
     def infer_function_body(self, function: IRFunction):
