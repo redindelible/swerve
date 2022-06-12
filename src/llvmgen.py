@@ -130,6 +130,7 @@ class LLVMGen:
         set_value_type = self.generate_type(variant.set.type)
         # noinspection PyUnresolvedReferences
         set_type: ir.FunctionType = set_value_type.pointee.elements[0].pointee
+        # noinspection PyShadowingBuiltins
         set = ir.Function(self.module, set_type, self.new_name(f"{struct_type.name}::set"))
 
         # noinspection PyUnresolvedReferences

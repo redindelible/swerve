@@ -198,7 +198,7 @@ class ResolveNames:
         get_decl = IRValueDecl(get_type, array_loc, False)
         get_method = IRMethod(
             "get", True, True,
-            IRFunction(get_decl, f"array[{type}]::get", [
+            IRFunction(False, get_decl, f"array[{type}]::get", [
                 IRParameter(IRValueDecl(array_type, array_loc, True), "self", array_type),
                 IRParameter(IRValueDecl(IRIntegerType(64), array_loc, True), "index", IRIntegerType(64))
             ], type, IRBlock([], [], False))
@@ -210,7 +210,7 @@ class ResolveNames:
         set_decl = IRValueDecl(set_type, array_loc, False)
         set_method = IRMethod(
             "set", True, True,
-            IRFunction(set_decl, f"array[{type}]::set", [
+            IRFunction(False, set_decl, f"array[{type}]::set", [
                 IRParameter(IRValueDecl(array_type, array_loc, True), "self", array_type),
                 IRParameter(IRValueDecl(IRIntegerType(64), array_loc, True), "index", IRIntegerType(64)),
                 IRParameter(IRValueDecl(type, array_loc, True), "value", type)
@@ -366,7 +366,7 @@ class ResolveNames:
 
             body = self.resolve_body(method.body, self.pop())
 
-            func = IRFunction(self.value_decls[method], method.name, params, ret_type, body).set_loc(method.loc)
+            func = IRFunction(False, self.value_decls[method], method.name, params, ret_type, body).set_loc(method.loc)
             method = IRMethod(func.name, method.is_static, method.self_name is not None, func).set_loc(method.loc)
             methods.append(method)
         self.pop()
@@ -469,7 +469,6 @@ class ResolveNames:
             else:
                 ret_type = IRUnresolvedUnknownType()
 
-            # TODO make returns work in a lambda
             expr_ns = self.push(Namespace(is_lambda=True))
             params = []
             for param in expr.parameters:

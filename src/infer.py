@@ -70,7 +70,7 @@ class BidirectionalTypeInference:
         with self.substitutions.replace(arguments):
             for method in struct.methods:
                 func = IRFunction(
-                    IRValueDecl(IRUnresolvedUnknownType(), method.function.loc, False),
+                    False, IRValueDecl(IRUnresolvedUnknownType(), method.function.loc, False),
                     f"{struct.name}::{method.name}",
                     [IRParameter(IRValueDecl(param.decl.type, param.loc, True), param.name, param.type) for param in method.function.parameters],
                     method.function.return_type,
@@ -100,7 +100,7 @@ class BidirectionalTypeInference:
             raise ValueError()
         else:
             func = IRFunction(
-                IRValueDecl(IRUnresolvedUnknownType(), generic.decl.location, False),
+                False, IRValueDecl(IRUnresolvedUnknownType(), generic.decl.location, False),
                 f"{generic.name}[{', '.join(str(arg) for arg in arguments)}]",
                 [IRParameter(IRValueDecl(param.decl.type, param.loc, True), param.name, param.type) for param in generic.parameters],
                 generic.return_type,
@@ -181,7 +181,10 @@ class BidirectionalTypeInference:
             def callback(type_args: list[IRResolvedType], loc: Location) -> tuple[IRFunctionType, IRExpr]:
                 nonlocal struct
                 struct = cast(IRGenericStruct, struct)
-                # TODO length check
+                if len(struct.type_vars) != len(type_args):
+                    raise CompilerMessage(ErrorType.COMPILATION, f"Mismatched type argument counts (expected {len(struct.type_vars)}, got {len(type_args)}):", loc, [
+                        CompilerMessage(ErrorType.NOTE, f"Generic declared here:", struct.loc)
+                    ])
                 resultant = self.resolve_generic_struct(struct, {type_var.type_decl.type: arg for type_var, arg in zip(struct.type_vars, type_args)}, loc)
                 return cast(IRFunctionType, resultant.constructor.type), IRNameExpr(resultant.constructor)
 
