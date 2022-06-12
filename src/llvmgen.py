@@ -303,7 +303,6 @@ class LLVMGen:
                     closed.append(decl)
                     decl.closure_index = count
                     count += 1
-            # print(function.body.declared)
             if len(closed) > 0:
                 closure_type = ir.LiteralStructType([self.void_p_type] + [self.generate_type(var.type) for var in closed])
                 closure = self.builder.call(self.external_functions["malloc"], [ir.Constant(self.integer_types[64], self.size_of(closure_type))])
@@ -417,7 +416,6 @@ class LLVMGen:
                 else:
                     raise ValueError()
             else:
-                # print(type(name), expr.name)
                 return self.builder.load(name)
         else:
             raise ValueError(name, expr.name)

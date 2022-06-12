@@ -29,7 +29,6 @@ def main():
         program = parse_program(arguments.file, import_dirs)
     except CompilerMessage as msg:
         msg.display(stderr)
-        raise
         return
 
     try:
@@ -42,7 +41,6 @@ def main():
         infer_types(program)
     except CompilerMessage as msg:
         msg.display(stderr)
-        raise
         return
 
     try:
@@ -50,8 +48,6 @@ def main():
     except CompilerMessage as msg:
         msg.display(stderr)
         return
-
-    print(module)
 
     emit_module(module, output_file)
 

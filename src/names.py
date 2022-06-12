@@ -413,7 +413,6 @@ class ResolveNames:
     def resolve_stmt(self, stmt: ASTStmt) -> IRStmt:
         if isinstance(stmt, ASTLetStmt) or isinstance(stmt, ASTVarStmt):
             decl = self.curr_ns.declare_value(stmt.name, IRValueDecl(IRUnresolvedUnknownType(), stmt.loc, True))
-            # print("when made", decl, "in", self.curr_ns)
             if stmt.type is None:
                 type = IRUnresolvedUnknownType()
             else:
@@ -495,7 +494,6 @@ class ResolveNames:
         for stmt in body.stmts:
             stmts.append(self.resolve_stmt(stmt))
         ns = self.pop()
-        # print(ns.value_names)
         return IRBlock(stmts, list(ns.value_names.values()), body.return_unit).set_loc(body.loc)
 
     def resolve_type(self, type: ASTType) -> IRType:
