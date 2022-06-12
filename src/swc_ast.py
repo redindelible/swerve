@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from common import Location, SourceLocation
-from tokens import Token, TokenType
+from .common import Location, SourceLocation
+from .tokens import Token, TokenType
 
 
 __all__ = ["ASTFunction", "ASTParameter", "ASTStmt", "ASTLetStmt", "ASTVarStmt", "ASTExprStmt", "ASTExpr", "ASTBlockExpr",

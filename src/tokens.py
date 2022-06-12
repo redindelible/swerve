@@ -3,7 +3,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Iterator
 
-from common import CompilerMessage, ErrorType, Source, SourceLocation
+from .common import CompilerMessage, ErrorType, Source, SourceLocation
 
 
 __all__ = ['TokenType', 'Token', 'TokenStream']

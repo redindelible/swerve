@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from common import BuiltinLocation, CompilerMessage, ErrorType, Location, Path
+from .common import BuiltinLocation, CompilerMessage, ErrorType, Location, Path
+
 from llvmlite import ir
 from llvmlite import binding as llvm
 

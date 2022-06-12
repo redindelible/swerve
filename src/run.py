@@ -4,12 +4,12 @@ from argparse import ArgumentParser
 from pathlib import Path
 from sys import stderr
 
-from common import CompilerMessage
-from parser import parse_program
-from names import resolve_names
-from infer import infer_types
-from llvmgen import generate_llvm
-from llvmemit import emit_module
+from .common import CompilerMessage
+from .parser import parse_program
+from .names import resolve_names
+from .infer import infer_types
+from .llvmgen import generate_llvm
+from .llvmemit import emit_module
 
 
 def main():

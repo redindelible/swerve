@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import cast
 
-from swc_ir import *
-from common import CompilerMessage, ErrorType, Location, ValueStack, NamedTuple
+from .swc_ir import *
+from .common import CompilerMessage, ErrorType, Location, ValueStack, NamedTuple
 
 
 def infer_types(program: IRProgram):

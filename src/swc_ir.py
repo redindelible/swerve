@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 from typing import Callable
-from common import Location, BuiltinLocation, NamedTuple
 
-
-# __all__ = []
+from .common import Location, BuiltinLocation, NamedTuple
 
 
 class IRNode:

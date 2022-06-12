@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import cast
 
-from swc_ir import *
+from .swc_ir import *
+
 from llvmlite import ir
 from llvmlite import binding as llvm
 

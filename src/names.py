@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import cast
 
-from swc_ast import *
-from swc_ir import *
-from common import BuiltinLocation, CompilerMessage, ErrorType, Location, Path
+from .swc_ast import *
+from .swc_ir import *
+from .common import BuiltinLocation, CompilerMessage, ErrorType, Location, Path
 
 
 def resolve_names(program: ASTProgram):
