@@ -1,3 +1,3 @@
-import src.run as run
+from .src import run
 
 run.main()
