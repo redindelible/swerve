@@ -103,6 +103,8 @@ class ParseState:
                 top_levels.extend(self.parse_import())
             elif self.match(TokenType.FN) or self.match(TokenType.EXTERN):
                 top_levels.append(self.parse_function())
+            elif self.match(TokenType.TRAIT):
+                top_levels.append(self.parse_trait())
             else:
                 top_levels.append(self.parse_struct())
         return ASTFile(self.source.path, top_levels, is_main)
@@ -232,11 +234,14 @@ class ParseState:
         self.expect(TokenType.LEFT_BRACE)
         while not self.match(TokenType.RIGHT_BRACE):
             if self.match(TokenType.FN):
-                methods.append(self.parse_method())
+                method = self.parse_method()
+                if method.is_virtual:
+                    raise CompilerMessage(ErrorType.PARSE, "Struct methods must have a body", method.loc)
+                methods.append(method)
             else:
                 fields.append(self.parse_struct_field())
         self.expect(TokenType.RIGHT_BRACE)
-        return ASTStruct(name, type_variables, supertraits, fields, methods, self.pop_loc())
+        return ASTStruct(name.text, type_variables, supertraits, fields, methods, self.pop_loc())
 
     def parse_struct_field(self) -> ASTStructField:
         self.push_loc()
@@ -247,7 +252,7 @@ class ParseState:
 
     def parse_method(self) -> ASTMethod:
         self.push_loc()
-        start = self.expect(TokenType.FN)
+        self.expect(TokenType.FN)
 
         if self.match(TokenType.COLON_COLON):
             self.expect(TokenType.COLON_COLON)
@@ -280,8 +285,50 @@ class ParseState:
         self.expect(TokenType.ARROW)
         ret_type = self.parse_type()
 
-        body = self.parse_block()
-        return ASTMethod(start, name, parameters, is_static, self_name, ret_type, body, self.pop_loc())
+        if self.match(TokenType.SEMICOLON):
+            loc = self.expect(TokenType.SEMICOLON).location
+            if is_static:
+                raise CompilerMessage(ErrorType.PARSE, "Static methods may not be virtual", loc)
+            is_virtual = True
+            body = ASTBlockExpr([], False, loc)
+        else:
+            is_virtual = False
+            body = self.parse_block()
+        return ASTMethod(name.text, parameters, ret_type, is_static, self_name, is_virtual, body, self.pop_loc())
+
+    def parse_trait(self) -> ASTTrait:
+        self.push_loc()
+        self.expect(TokenType.TRAIT)
+        name = self.expect(TokenType.IDENT)
+
+        type_variables = []
+        if self.match(TokenType.LEFT_BRACKET):
+            self.expect(TokenType.LEFT_BRACKET)
+            while not self.match(TokenType.RIGHT_BRACKET):
+                type_variables.append(self.parse_type_variable())
+                if self.match(TokenType.COMMA):
+                    self.advance()
+                else:
+                    break
+            self.expect(TokenType.RIGHT_BRACKET)
+
+        supertraits = []
+        if self.match(TokenType.COLON):
+            self.expect(TokenType.COLON)
+            while not self.match(TokenType.LEFT_BRACE):
+                supertraits.append(self.parse_type())
+                if self.match(TokenType.COMMA):
+                    self.advance()
+                else:
+                    break
+
+        methods: list[ASTMethod] = []
+        self.expect(TokenType.LEFT_BRACE)
+        while not self.match(TokenType.RIGHT_BRACE):
+            methods.append(self.parse_method())
+        self.expect(TokenType.RIGHT_BRACE)
+
+        return ASTTrait(name.text, type_variables, supertraits, methods, self.pop_loc())
 
     def parse_type_variable(self) -> ASTTypeVariable:
         self.push_loc()

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import cast
-
 from .swc_ast import *
 from .swc_ir import *
 from .common import BuiltinLocation, CompilerMessage, ErrorType, Location, Path
@@ -94,7 +92,7 @@ def validate_name(name: str, loc: Location):
 class ResolveNames:
     def __init__(self, program: ASTProgram):
         self.program = program
-        self.ir_program = IRProgram([], [], [])
+        self.ir_program = IRProgram([], [])
 
         self.program_namespace = Namespace()
         self.namespaces: list[Namespace] = []
@@ -145,92 +143,14 @@ class ResolveNames:
     def collect_names(self):
         self.collect_program(self.program)
 
-    def create_array_type(self) -> IRGenericStruct:
-        array_loc = BuiltinLocation()
-        array_type_var = IRTypeVariable("Item", None, IRTypeDecl(IRUnresolvedUnknownType(), array_loc))
-        type_var = array_type_var.type_decl.type = IRTypeVarType(array_type_var)
-        array = IRGenericStruct(
-            IRTypeDecl(IRUnresolvedUnknownType(), array_loc),
-            IRValueDecl(IRUnresolvedUnknownType(), array_loc, False),
-            "array", [array_type_var], [], [], [], {}
-        )
-        array_type = array.type_decl.type = IRGenericStructType(array, [type_var])
-
-        array.constructor.type = IRGenericFunctionType(
-            [array_type_var],
-            [IRParameterType(IRIntegerType(64), array_loc), IRParameterType(IRFunctionType(
-                [IRParameterType(IRIntegerType(64), array_loc)], type_var
-            ), array_loc)], array_type,
-            self.array_callback
-        )
-        return array
-
-    def array_callback(self, arguments: list[IRResolvedType], loc: Location) -> tuple[IRFunctionType, IRExpr]:
-        if len(arguments) != 1:
-            raise CompilerMessage(ErrorType.COMPILATION, f"Mismatched number of arguments to generic (expected 1, got {len(arguments)}):", loc)
-        type = arguments[0]
-        if type not in self.ir_program.array_variants:
-            if type.is_concrete():
-                self.create_specific_array_type(type)
-            else:
-                raise ValueError()
-        variant = self.ir_program.array_variants[type]
-        constructor = variant.constructor
-        return cast(IRFunctionType, constructor.type), IRNameExpr(constructor).set_loc(loc)
-
-    def create_specific_array_type(self, type: IRResolvedType):
-        array_loc = BuiltinLocation()
-        array_constructor = IRValueDecl(IRUnresolvedUnknownType(), array_loc, False)
-        array = IRStruct(
-            IRTypeDecl(IRUnresolvedUnknownType(), array_loc),
-            array_constructor,
-            f"array[{type}]", [], [], []
-        )
-        array_type = array.type_decl.type = IRStructType(array)
-
-        array.constructor.type = IRFunctionType(
-            [IRParameterType(IRIntegerType(64), array_loc), IRParameterType(IRFunctionType(
-                [IRParameterType(IRIntegerType(64), array_loc)], type
-            ), array_loc)], array_type,
-        )
-
-        get_type = IRFunctionType([IRParameterType(array_type, array_loc), IRParameterType(IRIntegerType(64), array_loc)], type)
-        get_decl = IRValueDecl(get_type, array_loc, False)
-        get_method = IRMethod(
-            "get", True, True,
-            IRFunction(False, get_decl, f"array[{type}]::get", [
-                IRParameter(IRValueDecl(array_type, array_loc, True), "self", array_type),
-                IRParameter(IRValueDecl(IRIntegerType(64), array_loc, True), "index", IRIntegerType(64))
-            ], type, IRBlock([], [], False))
-        )
-        get_method.function.function_type = get_type
-        array.methods.append(get_method)
-
-        set_type = IRFunctionType([IRParameterType(array_type, array_loc), IRParameterType(IRIntegerType(64), array_loc), IRParameterType(type, array_loc)], IRUnitType())
-        set_decl = IRValueDecl(set_type, array_loc, False)
-        set_method = IRMethod(
-            "set", True, True,
-            IRFunction(False, set_decl, f"array[{type}]::set", [
-                IRParameter(IRValueDecl(array_type, array_loc, True), "self", array_type),
-                IRParameter(IRValueDecl(IRIntegerType(64), array_loc, True), "index", IRIntegerType(64)),
-                IRParameter(IRValueDecl(type, array_loc, True), "value", type)
-            ], IRUnitType(), IRBlock([], [], True))
-        )
-        set_method.function.function_type = set_type
-        array.methods.append(set_method)
-
-        self.ir_program.array_variants[type] = ArrayVariant(type, array, array_constructor, get_decl, set_decl)
-
     def collect_program(self, program: ASTProgram):
         ns = self.push(self.program_namespace)
         ns.declare_type("int", IRTypeDecl(IRIntegerType(64), BuiltinLocation()))
-        ns.declare_type("str", IRTypeDecl(IRStringType(), BuiltinLocation()))
+        # ns.declare_type("str", IRTypeDecl(IRStringType(), BuiltinLocation()))
         ns.declare_type("bool", IRTypeDecl(IRBoolType(), BuiltinLocation()))
 
-        array = self.create_array_type()
-
-        ns.declare_type("array", array.type_decl)
-        ns.declare_value("array", array.constructor)
+        self.ir_program.array_decl = ns.declare_type("Array", IRTypeDecl(IRUnresolvedUnknownType(), BuiltinLocation()))
+        self.ir_program.array_constructor_decl = ns.declare_value("Array", IRValueDecl(IRUnresolvedUnknownType(), BuiltinLocation(), False))
 
         for file in program.files:
             self.collect_file(file)
@@ -243,6 +163,12 @@ class ResolveNames:
                 self.collect_function(top_level)
             elif isinstance(top_level, ASTStruct):
                 self.collect_struct(top_level)
+            elif isinstance(top_level, ASTTrait):
+                self.collect_trait(top_level)
+            elif isinstance(top_level, ASTImport):
+                pass
+            else:
+                raise ValueError(type(top_level))
         self.file_namespaces[file] = self.pop()
 
     def collect_function(self, function: ASTFunction):
@@ -261,6 +187,15 @@ class ResolveNames:
         # constructor
         decl = self.curr_ns.declare_value(struct.name, IRValueDecl(IRUnresolvedUnknownType(), struct.loc, False))
         self.value_decls[struct] = decl
+
+    def collect_trait(self, struct: ASTTrait):
+        type_decl = self.curr_ns.declare_type(struct.name, IRTypeDecl(IRUnresolvedUnknownType(), struct.loc))
+        struct_ns = self.push(Namespace())
+        for method in struct.methods:
+            decl = self.curr_ns.declare_value(method.name, IRValueDecl(IRUnresolvedUnknownType(), method.loc, False))
+            self.value_decls[method] = decl
+        self.pop()
+        # self.struct_type_decls[struct] = type_decl
 
     def resolve_imports(self):
         file_paths: dict[Path, ASTFile] = {file.path.resolve(): file for file in self.program.files}
@@ -332,17 +267,19 @@ class ResolveNames:
         struct_type_decl = self.struct_type_decls[struct]
 
         type_var_ns = self.push(Namespace())
-        type_vars: list[IRTypeVariable] = []
+        type_args: list[IRTypeVarType] = []
         for type_var in struct.type_variables:
             if type_var.bound is None:
                 bound = None
             else:
                 bound = self.resolve_type(type_var.bound)
-            type_decl = type_var_ns.declare_type(type_var.name, IRTypeDecl(IRUnresolvedUnknownType(), type_var.loc))
-            type_vars.append(IRTypeVariable(type_var.name, bound, type_decl).set_loc(type_var.loc))
+            var = IRTypeVariable(type_var.name, bound, IRTypeDecl(IRUnresolvedUnknownType(), type_var.loc)).set_loc(type_var.loc)
+            type_var_ns.declare_type(type_var.name, var.type_decl)
+            var.type_decl.type = IRTypeVarType(var).set_loc(type_var.loc)
+            type_args.append(var.type_decl.type)
 
         supertraits = []
-        for supertrait in struct.supertraits:
+        for supertrait in struct.traits:
             supertraits.append(self.resolve_type(supertrait))
 
         fields = []
@@ -366,22 +303,19 @@ class ResolveNames:
 
             body = self.resolve_body(method.body, self.pop())
 
-            func = IRFunction(False, self.value_decls[method], method.name, params, ret_type, body).set_loc(method.loc)
+            func = IRFunction(self.value_decls[method], method.name, tuple(type_args), params, ret_type, body, False, False, None).set_loc(method.loc)
             method = IRMethod(func.name, method.is_static, method.self_name is not None, func).set_loc(method.loc)
             methods.append(method)
         self.pop()
 
-        if len(type_vars) > 0:
-            type = IRGenericStruct(struct_type_decl, self.value_decls[struct], struct.name, type_vars, supertraits, fields, methods, {})
-        else:
-            type = IRStruct(struct_type_decl, self.value_decls[struct], struct.name, supertraits, fields, methods)
+        type = IRStruct(struct_type_decl, self.value_decls[struct], struct.name, supertraits, fields, methods, tuple(type_args), {}, None)
         struct_type_decl.type = type
 
         self.ir_program.structs.append(type)
 
     def resolve_function(self, function: ASTFunction, is_main_file: bool):
         body_ns = self.push(Namespace())
-        type_vars = []
+        type_vars: list[IRResolvedType] = []
         if isinstance(function, ASTGenericFunction):
             for type_var in function.type_vars:
                 if type_var.bound is None:
@@ -389,7 +323,9 @@ class ResolveNames:
                 else:
                     bound = self.resolve_type(type_var.bound)
                 type_decl = body_ns.declare_type(type_var.name, IRTypeDecl(IRUnresolvedUnknownType(), type_var.loc))
-                type_vars.append(IRTypeVariable(type_var.name, bound, type_decl).set_loc(type_var.loc))
+                type_var = IRTypeVariable(type_var.name, bound, type_decl).set_loc(type_var.loc)
+                type_decl.type = IRTypeVarType(type_var)
+                type_vars.append(type_decl.type)
 
         ret_type = self.resolve_type(function.return_type)
 
@@ -399,10 +335,7 @@ class ResolveNames:
             params.append(IRParameter(param_decl, param.name, self.resolve_type(param.type)).set_loc(param.loc))
 
         body = self.resolve_body(function.body, self.pop())
-        if len(type_vars) > 0:
-            func = IRGenericFunction(self.value_decls[function], function.name, type_vars, params, ret_type, body).set_loc(function.loc)
-        else:
-            func = IRFunction(function.is_extern, self.value_decls[function], function.name, params, ret_type, body).set_loc(function.loc)
+        func = IRFunction(self.value_decls[function], function.name, tuple(type_vars), params, ret_type, body, function.is_extern, False, None).set_loc(function.loc)
 
         if function.name == "main" and is_main_file:
             if len(type_vars) > 0:
@@ -422,12 +355,12 @@ class ResolveNames:
             return IRExprStmt(self.resolve_expr(stmt.expr)).set_loc(stmt.loc)
         elif isinstance(stmt, ASTWhileStmt):
             return IRWhileStmt(self.resolve_expr(stmt.cond), self.resolve_expr(stmt.body)).set_loc(stmt.loc)
-        elif isinstance(stmt, ASTForStmt):
-            self.push(Namespace())
-            decl = self.curr_ns.declare_value(stmt.iter_var, IRValueDecl(IRUnresolvedUnknownType(), stmt.iterator.loc, True))
-            ir_stmt = IRForStmt(decl, self.resolve_expr(stmt.iterator), self.resolve_expr(stmt.body)).set_loc(stmt.loc)
-            self.pop()
-            return ir_stmt
+        # elif isinstance(stmt, ASTForStmt):
+        #     self.push(Namespace())
+        #     decl = self.curr_ns.declare_value(stmt.iter_var, IRValueDecl(IRUnresolvedUnknownType(), stmt.iterator.loc, True))
+        #     ir_stmt = IRForStmt(decl, self.resolve_expr(stmt.iterator), self.resolve_expr(stmt.body)).set_loc(stmt.loc)
+        #     self.pop()
+        #     return ir_stmt
         elif isinstance(stmt, ASTReturnStmt):
             return IRReturnStmt(self.resolve_expr(stmt.expr)).set_loc(stmt.loc)
         else:
@@ -448,8 +381,8 @@ class ResolveNames:
             return IRGenericExpr(self.resolve_expr(expr.generic), [self.resolve_type(arg) for arg in expr.arguments]).set_loc(expr.loc)
         elif isinstance(expr, ASTIntegerExpr):
             return IRIntegerExpr(expr.number).set_loc(expr.loc)
-        elif isinstance(expr, ASTStringExpr):
-            return IRStringExpr(expr.string).set_loc(expr.loc)
+        # elif isinstance(expr, ASTStringExpr):
+        #     return IRStringExpr(expr.string).set_loc(expr.loc)
         elif isinstance(expr, ASTGroupExpr):
             return self.resolve_expr(expr.expr).set_loc(expr.loc)
         elif isinstance(expr, ASTNegExpr):
@@ -472,7 +405,7 @@ class ResolveNames:
             params = []
             for param in expr.parameters:
                 param_decl = self.curr_ns.declare_value(param.name, IRValueDecl(IRUnresolvedUnknownType(), param.loc, True))
-                params.append(IRParameter(param_decl, param.name, self.resolve_type(param.type) if param.type is not None else IRUnresolvedUnknownType()))
+                params.append(IRParameter(param_decl, param.name, self.resolve_type(param.type) if param.type is not None else IRUnresolvedUnknownType()).set_loc(param.loc))
 
             expr_expr = self.resolve_expr(expr.expr)
 

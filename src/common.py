@@ -6,8 +6,10 @@ from pathlib import Path
 from contextlib import contextmanager
 
 from typing import IO, Generic, TypeVar, NamedTuple
+from collections.abc import MutableSequence, Iterable
 
-__all__ = ['CompilerMessage', 'ErrorType', 'Source', 'Location', 'BuiltinLocation', 'SourceLocation', 'CommandLineLocation', 'Path', 'ValueStack', 'NamedTuple']
+__all__ = ['CompilerMessage', 'ErrorType', 'Source', 'Location', 'BuiltinLocation', 'SourceLocation', 'CommandLineLocation',
+           'Path', 'ValueStack', 'NamedTuple', 'UniqueList']
 
 
 T = TypeVar('T')
@@ -29,6 +31,38 @@ class ValueStack(Generic[T]):
     @property
     def value(self) -> T:
         return self._stack[-1]
+
+
+class UniqueList(MutableSequence[T], Generic[T]):
+    def __init__(self, items: Iterable[T]):
+        self._items = list(items)
+        self._remove_dups()
+
+    def insert(self, index: int, value: T):
+        if value not in self._items:
+            self._items.insert(index, value)
+
+    def __getitem__(self, item: int) -> T:
+        return self._items[item]
+
+    def __setitem__(self, key: int, value: T):
+        if value in self._items:
+            del self._items[key]
+        else:
+            self._items[key] = value
+
+    def __delitem__(self, key: int):
+        del self._items[key]
+
+    def __len__(self):
+        return len(self._items)
+
+    def _remove_dups(self):
+        items = []
+        for item in self._items:
+            if item not in items:
+                items.append(item)
+        self._items = items
 
 
 class ErrorType(Enum):

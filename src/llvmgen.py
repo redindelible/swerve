@@ -93,7 +93,7 @@ class LLVMGen:
 
     def load_structs(self):
         for struct in self.program.structs:
-            if not isinstance(struct, IRGenericStruct):
+            if len(struct.get_type_vars()) == 0 :
                 struct_type = self.module.context.get_identified_type(self.new_name(struct.name))
                 # noinspection PyTypeChecker
                 self.struct_types[struct.type_decl.type] = ir.PointerType(struct_type)
@@ -104,7 +104,7 @@ class LLVMGen:
                 self.struct_types[cast(IRStructType, array_variant.array.type_decl.type)] = ir.PointerType(struct_type)
 
         for struct in self.program.structs:
-            if not isinstance(struct, IRGenericStruct):
+            if len(struct.get_type_vars()) == 0:
                 # noinspection PyTypeChecker
                 struct_p_type: ir.PointerType = self.struct_types[struct.type_decl.type]
                 struct_type: ir.IdentifiedStructType = struct_p_type.pointee
@@ -256,16 +256,16 @@ class LLVMGen:
 
     def generate_functions(self):
         for function in self.program.functions:
-            if not isinstance(function, IRGenericFunction):
+            if len(function.get_type_vars()) == 0:
                 self.generate_function_header(function)
 
         for function in self.program.functions:
-            if not isinstance(function, IRGenericFunction):
+            if len(function.get_type_vars()) == 0:
                 self.generate_function(function)
 
     def generate_function_header(self, function: IRFunction):
         ir_func_type = function.function_type
-        func_type = ir.FunctionType(self.generate_type(ir_func_type.ret_type), [self.void_p_type] + [self.generate_type(param_type.type) for param_type in ir_func_type.param_types])
+        func_type = ir.FunctionType(self.generate_type(ir_func_type.ret_type), [self.void_p_type] + [self.generate_type(param_type) for param_type in ir_func_type.param_types])
         func = ir.Function(self.module, func_type, self.new_name(function.name))
 
         func_value = ir.GlobalVariable(self.module, cast(ir.PointerType, self.generate_type(ir_func_type)).pointee, f"obj_{func.name}")
@@ -449,7 +449,18 @@ class LLVMGen:
             arguments.extend(self.generate_expr(arg) for arg in expr.arguments)
             return self.builder.call(fn_ptr, arguments)
         else:
-            raise ValueError()
+            obj = self.generate_expr(expr.obj)
+
+            func = expr.method.function
+            fn_struct_p = self.decl_values[func.decl]
+            fn_ptr = self.builder.load(self.gep(fn_struct_p, [0, 0]))
+            closure_ptr = self.builder.load(self.gep(fn_struct_p, [0, 1]))
+
+            arguments = [closure_ptr]
+            if expr.method.is_self:
+                arguments.append(obj)
+            arguments.extend(self.generate_expr(arg) for arg in expr.arguments)
+            return self.builder.call(fn_ptr, arguments)
 
     def generate_generic_expr(self, expr: IRGenericExpr) -> ir.Value:
         return self.generate_expr(expr.replacement_expr)
@@ -599,7 +610,7 @@ class LLVMGen:
 
     def generate_lambda(self, expr: IRLambda) -> ir.Value:
         ir_func_type = cast(IRFunctionType, expr.yield_type)
-        func_type = ir.FunctionType(self.generate_type(ir_func_type.ret_type), [self.void_p_type] + [self.generate_type(param_type.type) for param_type in ir_func_type.param_types])
+        func_type = ir.FunctionType(self.generate_type(ir_func_type.ret_type), [self.void_p_type] + [self.generate_type(param_type) for param_type in ir_func_type.param_types])
         func = ir.Function(self.module, func_type, self.new_name("lambda"))
 
         entry_block = func.append_basic_block("entry")
@@ -676,7 +687,7 @@ class LLVMGen:
             return self.bool_type
         elif isinstance(type, IRFunctionType):
             return ir.PointerType(ir.LiteralStructType([
-                ir.PointerType(ir.FunctionType(self.generate_type(type.ret_type), [self.void_p_type] + [self.generate_type(param.type) for param in type.param_types])),
+                ir.PointerType(ir.FunctionType(self.generate_type(type.ret_type), [self.void_p_type] + [self.generate_type(param) for param in type.param_types])),
                 self.void_p_type
             ]))
         else:

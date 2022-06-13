@@ -12,7 +12,7 @@ __all__ = ["ASTFunction", "ASTParameter", "ASTStmt", "ASTLetStmt", "ASTVarStmt",
     "ASTType", "ASTTypeIdent", "ASTFile", "ASTNode", "ASTProgram", "ASTTopLevel", "ASTStruct", "ASTTypeVariable", "ASTMethod",
     "ASTStructField", "ASTImport", "ASTBinaryExpr", "ASTForStmt", "ASTIfExpr", "ASTWhileStmt", "ASTTypeGeneric", "ASTGenericExpr",
     "ASTLessExpr", "ASTLessEqualExpr", "ASTGreaterExpr", "ASTGreaterEqualExpr", "ASTAttrAssign", "ASTTypeUnit", "ASTTypeFunction",
-    "ASTLambda", "ASTEqualExpr", "ASTNotEqualExpr", "ASTModExpr", "ASTGenericFunction"]
+    "ASTLambda", "ASTEqualExpr", "ASTNotEqualExpr", "ASTModExpr", "ASTGenericFunction", "ASTTrait"]
 
 
 class ASTNode:
@@ -73,13 +73,21 @@ class ASTParameter(ASTNode):
 
 
 class ASTStruct(ASTTopLevel):
-    def __init__(self, name: Token, type_variables: list[ASTTypeVariable], supertraits: list[ASTType],
-                 fields: list[ASTStructField], methods: list[ASTMethod], location: SourceLocation):
+    def __init__(self, name: str, type_variables: list[ASTTypeVariable], traits: list[ASTType], fields: list[ASTStructField], methods: list[ASTMethod], location: SourceLocation):
         super().__init__(location)
-        self.name: str = name.text
+        self.name = name
         self.type_variables = type_variables
-        self.supertraits = supertraits
+        self.traits = traits
         self.fields = fields
+        self.methods = methods
+
+
+class ASTTrait(ASTTopLevel):
+    def __init__(self, name: str, type_variables: list[ASTTypeVariable], traits: list[ASTType], methods: list[ASTMethod], location: SourceLocation):
+        super().__init__(location)
+        self.name = name
+        self.type_variables = type_variables
+        self.traits = traits
         self.methods = methods
 
 
@@ -91,12 +99,14 @@ class ASTStructField(ASTNode):
 
 
 class ASTMethod(ASTNode):
-    def __init__(self, start: Token, name: Token, parameters: list[ASTParameter], is_static: bool, self_name: Token | None, return_type: ASTType, body: ASTBlockExpr, location: Location):
+    def __init__(self, name: str, parameters: list[ASTParameter], return_type: ASTType,
+                 is_static: bool, self_name: Token | None, is_virtual: bool, body: ASTBlockExpr, location: Location):
         super().__init__(location)
-        self.name: str = name.text
+        self.name = name
         self.parameters = parameters
         self.is_static = is_static
         self.self_name: Token | None = self_name
+        self.is_virtual = is_virtual
         self.return_type = return_type
         self.body = body
 

@@ -1,8 +1,17 @@
 import io::putchar
 
 
-fn main() -> int {
-    putchar(90);
+struct List[T] {
+    arr: Array[T]
 
-    return 0;
+    fn get(self, index: int) -> T {
+        return self.arr.get(index);
+    }
+}
+
+
+fn main() -> int {
+    let a := List[int](Array[int](10, |i| i * 3));
+
+    return a.get(2);
 }

@@ -9,5 +9,5 @@ option to add Python to your path, as that makes using Python much easier.
 5. Using pip, install the Python library llvmlite. Make sure your pip is for your Python 3.10
 install.
 6. In command prompt, change your current working directory to the one containing the 
-`swc` directory
-7. You can now run the compiler using a command like `python -m swc <path-to-input-file> -o<path-to-output-file>`
+`swerve` directory.
+7. You can now run the compiler using a command like `python -m swerve <path-to-input-file> -o<path-to-output-file>`.

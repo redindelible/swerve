@@ -52,6 +52,7 @@ class TokenType(Enum):
     AND = "`and`"
     NOT = "`not`"
     STRUCT = "`struct`"
+    TRAIT = "`trait`"
     IMPORT = "`import`"
     AS = "`as`"
     IF = "`if`"
@@ -96,6 +97,7 @@ KEYWORDS = {
     "and": TokenType.AND,
     "not": TokenType.NOT,
     "struct": TokenType.STRUCT,
+    "trait": TokenType.TRAIT,
     "import": TokenType.IMPORT,
     "as": TokenType.AS,
     "if": TokenType.IF,

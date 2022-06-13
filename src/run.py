@@ -41,6 +41,7 @@ def main():
         infer_types(program)
     except CompilerMessage as msg:
         msg.display(stderr)
+        raise
         return
 
     try:
@@ -52,4 +53,5 @@ def main():
     emit_module(module, output_file)
 
 
-main()
+if __name__ == '__main__':
+    main()
