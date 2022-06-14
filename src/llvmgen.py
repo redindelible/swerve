@@ -23,8 +23,10 @@ def generate_llvm(program: IRProgram) -> ir.Module:
 
     gen = LLVMGen(program)
     gen.load_external_functions()
+    gen.load_traits()
     gen.load_structs()
     gen.generate_functions()
+    gen.generate_vtables()
     gen.finalize()
     return gen.module
 
@@ -64,6 +66,11 @@ class LLVMGen:
         self.decl_values: dict[IRValueDecl, ir.Value] = {}
         self.struct_types: dict[IRStructType, ir.PointerType] = {}
 
+        self.trait_vtable_types: dict[IRTraitType, ir.LiteralStructType] = {}
+        self.trait_types: dict[IRTraitType, ir.LiteralStructType] = {}
+
+        self.vtables: dict[tuple[IRTraitType, IRStructType], ir.GlobalVariable] = {}
+
         self.counter: list[int] = list(range(0, 1000000))
         shuffle(self.counter)
 
@@ -79,6 +86,9 @@ class LLVMGen:
     def size_of(self, type: ir.Type) -> int:
         return type.get_abi_size(self.target_data)
 
+    def get_base_function_type(self, f_type: IRFunctionType) -> ir.FunctionType:
+        return ir.FunctionType(self.generate_type(f_type.ret_type), [self.void_p_type] + [self.generate_type(param) for param in f_type.param_types])
+
     def gep(self, pointer: ir.Value, indices: list[int]) -> ir.Value:
         return self.builder.gep(pointer, [ir.Constant(ir.IntType(32), index) for index in indices])
 
@@ -91,12 +101,36 @@ class LLVMGen:
         closure_ptr = self.builder.load(self.gep(fn_struct_p, [0, 1]))
         self.builder.ret(self.builder.call(fn_ptr, [closure_ptr] + list(main.args)))
 
+    def load_traits(self):
+        for trait in self.program.traits:
+            if len(trait.get_type_vars()) == 0:
+                v_table_type = self.module.context.get_identified_type(self.new_name(f"{trait.name}_vtable"))
+                trait_type = self.module.context.get_identified_type(self.new_name(f"{trait.name}"))
+                self.trait_vtable_types[cast(IRTraitType, trait.type_decl.type)] = v_table_type
+                self.trait_types[cast(IRTraitType, trait.type_decl.type)] = trait_type
+
+                trait_members: list[ir.Type] = []
+                for virtual_method in trait.get_virtual_methods():
+                    f_type = self.get_base_function_type(virtual_method.function.function_type)
+                    if virtual_method.is_self:
+                        f_type = ir.FunctionType(f_type.return_type, [self.void_p_type, self.void_p_type] + list(f_type.args[2:]))
+                    trait_members.append(f_type.as_pointer())
+                v_table_type.set_body(*trait_members)
+                trait_type.set_body(self.void_p_type, v_table_type.as_pointer())
+
     def load_structs(self):
         for struct in self.program.structs:
-            if len(struct.get_type_vars()) == 0 :
+            if len(struct.get_type_vars()) == 0:
                 struct_type = self.module.context.get_identified_type(self.new_name(struct.name))
                 # noinspection PyTypeChecker
                 self.struct_types[struct.type_decl.type] = ir.PointerType(struct_type)
+
+                for trait in struct.supertraits:
+                    trait = cast(IRTraitType, trait)
+                    vtable = self.vtables[(trait, cast(IRStructType, struct.type_decl.type))] = ir.GlobalVariable(
+                        self.module, self.trait_vtable_types[trait], self.new_name(f"{struct.name}-as-{trait.trait.name}_vtable")
+                    )
+                    vtable.global_constant = True
 
         for type, array_variant in self.program.array_variants.items():
             if type.is_concrete():
@@ -115,6 +149,20 @@ class LLVMGen:
         for type, array_variant in self.program.array_variants.items():
             if type.is_concrete():
                 self.generate_array_variant(array_variant)
+
+    def generate_vtables(self):
+        for struct in self.program.structs:
+            if len(struct.get_type_vars()) == 0:
+                for trait in struct.supertraits:
+                    trait = cast(IRTraitType, trait)
+                    vtable_type = self.trait_vtable_types[trait]
+
+                    vtable = self.vtables[(trait, cast(IRStructType, struct.type_decl.type))]
+                    functions: list[ir.Value] = []
+                    for vtable_f_type, (i, v_method) in zip(vtable_type.elements, enumerate(trait.trait.get_virtual_methods())):
+                        method = struct.methods[struct.has_method(v_method.name)]
+                        functions.append(self.function_ir[method.function].bitcast(vtable_f_type))
+                    vtable.initializer = ir.Constant(vtable_type, functions)
 
     def generate_array_variant(self, variant: ArrayVariant):
         # noinspection PyTypeChecker
@@ -375,29 +423,43 @@ class LLVMGen:
 
     def generate_expr(self, expr: IRExpr) -> ir.Value:
         if isinstance(expr, IRIntegerExpr):
-            return self.generate_integer_expr(expr)
+            val = self.generate_integer_expr(expr)
         elif isinstance(expr, IRNameExpr):
-            return self.generate_name_expr(expr)
+            val = self.generate_name_expr(expr)
         elif isinstance(expr, IRCallExpr):
-            return self.generate_call_expr(expr)
+            val = self.generate_call_expr(expr)
         elif isinstance(expr, IRAttrExpr):
-            return self.generate_attr_expr(expr)
+            val = self.generate_attr_expr(expr)
         elif isinstance(expr, IRGenericExpr):
-            return self.generate_generic_expr(expr)
+            val = self.generate_generic_expr(expr)
         elif isinstance(expr, IRBinaryExpr):
-            return self.generate_binary_expr(expr)
+            val = self.generate_binary_expr(expr)
         elif isinstance(expr, IRIf):
-            return self.generate_if_expr(expr)
+            val = self.generate_if_expr(expr)
         elif isinstance(expr, IRBlock):
-            return self.generate_block_expr(expr)
+            val = self.generate_block_expr(expr)
         elif isinstance(expr, IRAssign):
-            return self.generate_assign(expr)
+            val = self.generate_assign(expr)
         elif isinstance(expr, IRAttrAssign):
-            return self.generate_attr_assign(expr)
+            val = self.generate_attr_assign(expr)
         elif isinstance(expr, IRLambda):
-            return self.generate_lambda(expr)
+            val = self.generate_lambda(expr)
         else:
             raise ValueError(type(expr))
+        if expr.cast:
+            return self.generate_cast(val, expr.yield_type, expr.cast)
+        else:
+            return val
+
+    def generate_cast(self, val: ir.Value, from_type: IRResolvedType, to_type: IRResolvedType) -> ir.Value:
+        if isinstance(from_type, IRStructType) and isinstance(to_type, IRTraitType):
+            trait_type = self.trait_types[to_type]
+            trait_obj = ir.Constant(trait_type, [None, None])
+            trait_obj = self.builder.insert_value(trait_obj, self.builder.bitcast(val, self.void_p_type), 0)
+            trait_obj = self.builder.insert_value(trait_obj, self.vtables[(to_type, from_type)], 1)
+            return trait_obj
+        else:
+            raise ValueError(from_type.__class__, to_type.__class__)
 
     def generate_integer_expr(self, expr: IRIntegerExpr) -> ir.Value:
         return ir.Constant(self.generate_type(expr.yield_type), expr.number)
@@ -448,6 +510,17 @@ class LLVMGen:
                 arguments.append(obj)
             arguments.extend(self.generate_expr(arg) for arg in expr.arguments)
             return self.builder.call(fn_ptr, arguments)
+        elif isinstance(expr.from_type, IRTraitType):
+            trait = cast(IRTraitType, expr.from_type).trait
+            trait_obj = self.generate_expr(expr.obj)
+            obj = self.builder.extract_value(trait_obj, 0)
+            vtable_ptr = self.builder.extract_value(trait_obj, 1)
+            method_ptr = self.builder.load(self.gep(vtable_ptr, [0, trait.has_method(expr.method.name)]))
+            arguments = [self.void_p_type(None)]
+            if expr.method.is_self:
+                arguments.append(obj)
+            arguments.extend(self.generate_expr(arg) for arg in expr.arguments)
+            return self.builder.call(method_ptr, arguments)
         else:
             obj = self.generate_expr(expr.obj)
 
@@ -681,14 +754,13 @@ class LLVMGen:
                 return self.integer_types.setdefault(type.bits, ir.IntType(type.bits))
         elif isinstance(type, IRStructType):
             return self.struct_types[type]
+        elif isinstance(type, IRTraitType):
+            return self.trait_types[type]
         elif isinstance(type, IRUnitType):
             return self.unit_type
         elif isinstance(type, IRBoolType):
             return self.bool_type
         elif isinstance(type, IRFunctionType):
-            return ir.PointerType(ir.LiteralStructType([
-                ir.PointerType(ir.FunctionType(self.generate_type(type.ret_type), [self.void_p_type] + [self.generate_type(param) for param in type.param_types])),
-                self.void_p_type
-            ]))
+            return ir.PointerType(ir.LiteralStructType([self.get_base_function_type(type).as_pointer(), self.void_p_type]))
         else:
             raise ValueError(type.__class__)

@@ -92,7 +92,7 @@ def validate_name(name: str, loc: Location):
 class ResolveNames:
     def __init__(self, program: ASTProgram):
         self.program = program
-        self.ir_program = IRProgram([], [])
+        self.ir_program = IRProgram([], [], [])
 
         self.program_namespace = Namespace()
         self.namespaces: list[Namespace] = []
@@ -103,6 +103,7 @@ class ResolveNames:
         self.value_decls: dict[ASTNode, IRValueDecl] = {}
 
         self.struct_type_decls: dict[ASTStruct, IRTypeDecl] = {}
+        self.trait_type_decls: dict[ASTTrait, IRTypeDecl] = {}
 
     def push(self, ns: Namespace) -> Namespace:
         self.namespaces.append(ns)
@@ -188,14 +189,14 @@ class ResolveNames:
         decl = self.curr_ns.declare_value(struct.name, IRValueDecl(IRUnresolvedUnknownType(), struct.loc, False))
         self.value_decls[struct] = decl
 
-    def collect_trait(self, struct: ASTTrait):
-        type_decl = self.curr_ns.declare_type(struct.name, IRTypeDecl(IRUnresolvedUnknownType(), struct.loc))
+    def collect_trait(self, trait: ASTTrait):
+        type_decl = self.curr_ns.declare_type(trait.name, IRTypeDecl(IRUnresolvedUnknownType(), trait.loc))
         struct_ns = self.push(Namespace())
-        for method in struct.methods:
+        for method in trait.methods:
             decl = self.curr_ns.declare_value(method.name, IRValueDecl(IRUnresolvedUnknownType(), method.loc, False))
             self.value_decls[method] = decl
         self.pop()
-        # self.struct_type_decls[struct] = type_decl
+        self.trait_type_decls[trait] = type_decl
 
     def resolve_imports(self):
         file_paths: dict[Path, ASTFile] = {file.path.resolve(): file for file in self.program.files}
@@ -261,7 +262,63 @@ class ResolveNames:
                 self.resolve_function(top_level, file.is_main)
             elif isinstance(top_level, ASTStruct):
                 self.resolve_struct(top_level)
+            elif isinstance(top_level, ASTImport):
+                pass
+            elif isinstance(top_level, ASTTrait):
+                self.resolve_trait(top_level)
+            else:
+                raise ValueError(top_level.__class__)
         self.pop()
+
+    def resolve_trait(self, trait: ASTTrait):
+        trait_type_decl = self.trait_type_decls[trait]
+
+        type_var_ns = self.push(Namespace())
+        type_args: list[IRTypeVarType] = []
+        for type_var in trait.type_variables:
+            if type_var.bound is None:
+                bound = None
+            else:
+                bound = self.resolve_type(type_var.bound)
+            var = IRTypeVariable(type_var.name, bound, IRTypeDecl(IRUnresolvedUnknownType(), type_var.loc)).set_loc(
+                type_var.loc)
+            type_var_ns.declare_type(type_var.name, var.type_decl)
+            var.type_decl.type = IRTypeVarType(var).set_loc(type_var.loc)
+            type_args.append(var.type_decl.type)
+
+        used_names: set[str] = set()
+
+        methods: list[IRMethod] = []
+        for method in trait.methods:
+            if method.name in used_names:
+                raise CompilerMessage(ErrorType.COMPILATION, f"Name {method.name} already used for a method on this trait", method.loc)
+            else:
+                used_names.add(method.name)
+
+            ret_type = self.resolve_type(method.return_type)
+
+            body_ns = self.push(Namespace())
+            params: list[IRParameter] = []
+            if method.self_name is not None:
+                self_decl = self.curr_ns.declare_value(method.self_name.text, IRValueDecl(IRUnresolvedUnknownType(), BuiltinLocation(), True))
+                param = IRParameter(self_decl, method.name, IRUnresolvedNameType(trait_type_decl)).set_loc(method.self_name.location)
+                params.append(param)
+            for param in method.parameters:
+                param_decl = self.curr_ns.declare_value(param.name, IRValueDecl(IRUnresolvedUnknownType(), param.loc, True))
+                param = IRParameter(param_decl, param.name, self.resolve_type(param.type)).set_loc(param.loc)
+                params.append(param)
+
+            body = self.resolve_body(method.body, self.pop())
+
+            func = IRFunction(self.value_decls[method], method.name, tuple(type_args), params, ret_type, body, False, False, None).set_loc(method.loc)
+            method = IRMethod(func.name, method.is_virtual, method.is_static, method.self_name is not None, func).set_loc(method.loc)
+            methods.append(method)
+        self.pop()
+
+        type = IRTrait(trait_type_decl, trait.name, methods, tuple(type_args), {}, None).set_loc(trait.loc)
+        trait_type_decl.type = type
+
+        self.ir_program.traits.append(type)
 
     def resolve_struct(self, struct: ASTStruct):
         struct_type_decl = self.struct_type_decls[struct]
@@ -282,12 +339,23 @@ class ResolveNames:
         for supertrait in struct.traits:
             supertraits.append(self.resolve_type(supertrait))
 
+        used_names: set[str] = set()
+
         fields = []
         for field in struct.fields:
+            if field.name in used_names:
+                raise CompilerMessage(ErrorType.COMPILATION, f"Name {field.name} already used for an attribute on this struct", field.loc)
+            else:
+                used_names.add(field.name)
             fields.append(IRField(field.name, self.resolve_type(field.type)).set_loc(field.loc))
 
         methods: list[IRMethod] = []
         for method in struct.methods:
+            if method.name in used_names:
+                raise CompilerMessage(ErrorType.COMPILATION, f"Name {method.name} already used for an attribute on this struct", method.loc)
+            else:
+                used_names.add(method.name)
+
             ret_type = self.resolve_type(method.return_type)
 
             body_ns = self.push(Namespace())
@@ -304,11 +372,11 @@ class ResolveNames:
             body = self.resolve_body(method.body, self.pop())
 
             func = IRFunction(self.value_decls[method], method.name, tuple(type_args), params, ret_type, body, False, False, None).set_loc(method.loc)
-            method = IRMethod(func.name, method.is_static, method.self_name is not None, func).set_loc(method.loc)
+            method = IRMethod(func.name, False, method.is_static, method.self_name is not None, func).set_loc(method.loc)
             methods.append(method)
         self.pop()
 
-        type = IRStruct(struct_type_decl, self.value_decls[struct], struct.name, supertraits, fields, methods, tuple(type_args), {}, None)
+        type = IRStruct(struct_type_decl, self.value_decls[struct], struct.name, supertraits, fields, methods, tuple(type_args), {}, None).set_loc(struct.loc)
         struct_type_decl.type = type
 
         self.ir_program.structs.append(type)

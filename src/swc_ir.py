@@ -6,6 +6,16 @@ from dataclasses import dataclass, field
 from .common import Location, BuiltinLocation, NamedTuple, UniqueList
 
 
+
+__all__ = ['IRNode', 'IRValue', 'IRTypeVarType', 'IRType', 'IRBlock', 'IRValueDecl', 'IRIntegerType', "IRFunctionType",
+           'IRParameter', 'IRFunction', 'IRTypeDecl', 'IRNameExpr', "IRResolvedType", 'IRTypeVariable',
+           'IRUnresolvedUnknownType', 'IRExpr', 'IRStruct', 'IRStructType', 'IRUnresolvedGenericType', 'IRMethod',
+           'IRUnitType', 'IRUnresolvedNameType', 'IRProgram', 'IRMethodCallExpr', 'IRField', 'IRAttrExpr', 'IRExprStmt',
+           'IRWhileStmt', 'IRDeclStmt', 'IRUnresolvedFunctionType', 'IRNotExpr', 'IRNegExpr', 'IRLambda', 'IRAttrAssign',
+           'IRAssign', 'IRIf', 'IRBoolType', 'IRIntegerExpr', 'IRGenericExpr', 'IRReturnStmt', 'IRCallExpr', 'IRBinaryExpr',
+           'IRStmt', 'IRUnresolvedType', 'ArrayVariant', 'IRTrait', 'IRTraitType']
+
+
 @dataclass()
 class IRNode:
     loc: Location = field(init=False, repr=False)
@@ -169,21 +179,12 @@ class IRFunctionType(IRResolvedType):
         return hash((tuple(self.param_types), self.ret_type))
 
 
-class IRParameterType:
-    def __init__(self, type: IRResolvedType, loc: Location):
-        self.type = type
-        self.loc = loc
-
-    def __eq__(self, other):
-        return isinstance(other, IRParameterType) and self.type == other.type
-
-
 @dataclass()
 class IRStructType(IRResolvedType):
     struct: IRStruct
 
     def is_subtype(self, bound: IRResolvedType) -> bool:
-        return self is bound
+        return self is bound or bound in self.struct.supertraits
 
     def get_type_vars(self) -> set[IRTypeVarType]:
         return set(self.struct.get_type_vars())
@@ -198,25 +199,24 @@ class IRStructType(IRResolvedType):
         return hash(self.struct)
 
 
-# @dataclass()
-# class IRGenericStructType(IRResolvedType):
-#     # TODO replace this type using namespace syntax
-#     generic: IRStruct
-#
-#     def is_subtype(self, bound: IRResolvedType) -> bool:
-#         return self is bound
-#
-#     def get_type_vars(self) -> set[IRTypeVariable]:
-#         return self.generic.get_type_vars()
-#
-#     def __str__(self):
-#         return f"struct '{self.generic.name}'"
-#
-#     def __eq__(self, other: IRGenericStructType):
-#         return type(other) == IRGenericStructType and other.generic is self.generic
-#
-#     def __hash__(self):
-#         return hash(self.generic)
+@dataclass()
+class IRTraitType(IRResolvedType):
+    trait: IRTrait
+
+    def is_subtype(self, bound: IRResolvedType) -> bool:
+        return self is bound
+
+    def get_type_vars(self) -> set[IRTypeVarType]:
+        return set(self.trait.get_type_vars())
+
+    def __str__(self):
+        return f"trait '{self.trait.name}'"
+
+    def __eq__(self, other: IRTraitType):
+        return type(other) == IRTraitType and other.trait is self.trait
+
+    def __hash__(self):
+        return hash(self.trait)
 
 
 @dataclass()
@@ -240,24 +240,6 @@ class IRIntegerType(IRResolvedType):
 
     def __hash__(self):
         return hash((type(self), self.bits))
-
-
-# @dataclass()
-# class IRStringType(IRResolvedType):
-#     def is_subtype(self, bound: IRResolvedType) -> bool:
-#         return isinstance(bound, IRStringType)
-#
-#     def is_concrete(self) -> bool:
-#         return True
-#
-#     def __str__(self):
-#         return "str"
-#
-#     def __eq__(self, other: IRStringType):
-#         return type(other) == IRStringType
-#
-#     def __hash__(self):
-#         return hash(type(self))
 
 
 @dataclass()
@@ -307,7 +289,7 @@ class IRTypeVarType(IRResolvedType):
         return {self}
 
     def __str__(self):
-        return f"Type Variable {self.type_var.name} defined {self.loc.short_context()}"
+        return f"{self.type_var.name}"
 
     def __eq__(self, other: IRTypeVarType):
         return type(other) == IRTypeVarType and self.type_var is other.type_var
@@ -325,9 +307,10 @@ class ArrayVariant(NamedTuple):
 
 
 class IRProgram:
-    def __init__(self, functions: list[IRFunction], structs: list[IRStruct]):
+    def __init__(self, functions: list[IRFunction], structs: list[IRStruct], traits: list[IRTrait]):
         self.functions = functions
         self.structs = structs
+        self.traits = traits
 
         self.main_func: IRFunction | None = None
 
@@ -381,6 +364,43 @@ class IRStruct(IRNode):
         return id(self)
 
 
+@dataclass(repr=False)
+class IRTrait(IRNode):
+    type_decl: IRTypeDecl
+    base_name: str
+    methods: list[IRMethod]
+
+    type_args: tuple[IRResolvedType, ...]
+    reifications: dict[tuple[IRResolvedType], IRTrait]
+    substitute: Callable[[dict[IRTypeVarType, IRResolvedType], Location], IRTrait] | None
+
+    @property
+    def name(self) -> str:
+        if self.type_args:
+            return f"{self.base_name}[{', '.join(str(arg) for arg in self.type_args)}]"
+        else:
+            return f"{self.base_name}"
+
+    def get_virtual_methods(self) -> list[IRMethod]:
+        return [method for method in self.methods if method.is_virtual]
+
+    def get_type_vars(self) -> tuple[IRTypeVarType]:
+        type_vars: UniqueList[IRTypeVarType] = UniqueList([])
+        for arg in self.type_args:
+            type_vars.extend(arg.get_type_vars())
+        return tuple(type_vars)
+
+    def has_method(self, name: str) -> int | None:
+        for i, method in enumerate(self.methods):
+            if method.name == name:
+                return i
+        else:
+            return None
+
+    def __hash__(self):
+        return id(self)
+
+
 @dataclass()
 class IRField(IRNode):
     name: str
@@ -390,6 +410,7 @@ class IRField(IRNode):
 @dataclass()
 class IRMethod(IRNode):
     name: str
+    is_virtual: bool
     is_static: bool
     is_self: bool
     function: IRFunction
@@ -491,6 +512,7 @@ class IRReturnStmt(IRStmt):
 @dataclass()
 class IRExpr(IRNode):
     yield_type: IRResolvedType | None = field(init=False, default=None)
+    cast: IRResolvedType | None = field(init=False, default=None)
 
     # noinspection PyMethodMayBeStatic
     def always_returns(self) -> bool:
@@ -578,6 +600,7 @@ class IRCallExpr(IRExpr):
 @dataclass()
 class IRMethodCallExpr(IRExpr):
     obj: IRExpr
+    from_type: IRStructType | IRTraitType
     method: IRMethod
     arguments: list[IRExpr]
 
