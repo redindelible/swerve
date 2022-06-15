@@ -458,6 +458,8 @@ class ParseState:
         left = self.parse_precedence_3()
         if self.match(TokenType.EQUAL, TokenType.PLUS_EQUAL, TokenType.MINUS_EQUAL, TokenType.STAR_EQUAL, TokenType.SLASH_EQUAL, TokenType.PERCENT_EQUAL):
             left_expr = left.as_expr()
+            if not isinstance(left_expr, (ASTNameExpr, ASTAttrExpr)):
+                return left
             self.push_loc()
             assign_type = self.advance()
             right = self.parse_precedence_2().as_expr()

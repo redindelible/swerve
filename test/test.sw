@@ -1,7 +1,7 @@
 import io
 
 
-struct List[T] {
+struct List[T] : ops::Index[T] {
     arr: _array[T]
     len: int
     cap: int
@@ -40,7 +40,7 @@ struct List[T] {
         self.len += 1;
     }
 
-    fn ::get(self, index: int) -> T {
+    fn get(self, index: int) -> T {
         return self.arr.get(index);
     }
 }
@@ -49,6 +49,10 @@ struct List[T] {
 fn main() -> int {
     let li := List[int]::new_empty();
     li.append(1);
+    li.append(2);
+    li.append(3);
 
-    return li.get(0);
+    let indexable: ops::Index[int] = li;
+
+    return indexable.get(2);
 }

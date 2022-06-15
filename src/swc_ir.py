@@ -224,8 +224,6 @@ class IRFunctionType(IRResolvedType):
     param_types: list[IRResolvedType]
     ret_type: IRResolvedType
 
-    # callback: Callable[[dict[IRTypeVarType, IRResolvedType], Location], tuple[IRFunctionType, IRExpr]]
-
     def is_subtype(self, bound: IRResolvedType) -> bool:
         if not isinstance(bound, IRFunctionType):
             return False
@@ -398,6 +396,8 @@ class IRProgram:
         self.array_variants: dict[IRResolvedType, ArrayVariant] = {}
         self.array_reifications: dict[tuple[IRResolvedType], IRStruct] = {}
 
+        self.ops: dict[str, IRTypeDecl] = {}
+
 
 @dataclass(repr=False)
 class IRStruct(IRNode):
@@ -543,6 +543,10 @@ class IRParameter(IRNode):
     decl: IRValueDecl
     name: str
     type: IRType
+
+    @classmethod
+    def create(cls, name: str, type: IRType):
+        return IRParameter(IRValueDecl(type, BuiltinLocation(), True), name, type)
 
 
 @dataclass()

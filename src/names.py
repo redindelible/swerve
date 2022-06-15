@@ -84,6 +84,10 @@ class ResolveNames:
         self.ir_program.array_decl = ns.declare_type("_array", IRTypeDecl(IRUnresolvedUnknownType(), BuiltinLocation()))
         self.ir_program.array_constructor_decl = ns.declare_value("_array", IRValueDecl(IRUnresolvedUnknownType(), BuiltinLocation(), False))
 
+        ops_ns = Namespace()
+        self.ir_program.ops["Index"] = ops_ns.declare_type("Index", IRTypeDecl(IRUnresolvedUnknownType(), BuiltinLocation()))
+        ns.declare_namespace("ops", ops_ns, BuiltinLocation())
+
         for file in program.files:
             self.collect_file(file)
         self.pop()
@@ -458,7 +462,11 @@ class ResolveNames:
 
     def resolve_type(self, type: ASTType) -> IRType:
         if isinstance(type, ASTNameType):
-            return IRUnresolvedNameType(self.get_type(type.name, type.loc)).set_loc(type.loc)
+            if type.ns is None:
+                return IRUnresolvedNameType(self.get_type(type.name, type.loc)).set_loc(type.loc)
+            else:
+                ns = self.resolve_namespace(type.ns)
+                return IRUnresolvedNameType(ns.get_type(type.name, type.loc)).set_loc(type.loc)
         elif isinstance(type, ASTGenericType):
             return IRUnresolvedGenericType(self.resolve_type(type.generic), [self.resolve_type(arg) for arg in type.type_arguments]).set_loc(type.loc)
         elif isinstance(type, ASTUnitType):

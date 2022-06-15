@@ -652,22 +652,23 @@ class LLVMGen:
                         current_closure = self.builder.load(self.builder.bitcast(current_closure, ir.PointerType(ir.PointerType(ir.IntType(8)))))
                 else:
                     raise ValueError()
-                match expr.op:
-                    case "none":
-                        pass
-                    case "Add":
-                        value = self.builder.add(self.builder.load(slot_ptr), value)
-                    case "Sub":
-                        value = self.builder.sub(self.builder.load(slot_ptr), value)
-                    case "Mul":
-                        value = self.builder.mul(self.builder.load(slot_ptr), value)
-                    case "Div":
-                        value = self.builder.sdiv(self.builder.load(slot_ptr), value)
-                    case "Mod":
-                        value = self.builder.srem(self.builder.load(slot_ptr), value)
-                self.builder.store(value, slot_ptr)
+                var_loc = slot_ptr
             else:
-                self.builder.store(value, name)
+                var_loc = name
+            match expr.op:
+                case "none":
+                    pass
+                case "Add":
+                    value = self.builder.add(self.builder.load(var_loc), value)
+                case "Sub":
+                    value = self.builder.sub(self.builder.load(var_loc), value)
+                case "Mul":
+                    value = self.builder.mul(self.builder.load(var_loc), value)
+                case "Div":
+                    value = self.builder.sdiv(self.builder.load(var_loc), value)
+                case "Mod":
+                    value = self.builder.srem(self.builder.load(var_loc), value)
+            self.builder.store(value, var_loc)
         else:
             raise ValueError()
 

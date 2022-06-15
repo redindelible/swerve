@@ -11,6 +11,101 @@ def infer_types(program: IRProgram):
     inferrer.infer_types()
 
 
+class Method(NamedTuple):
+    name: str
+    params: list[tuple[str, IRResolvedType]]
+    ret: IRResolvedType
+    is_self: bool
+
+
+class BuiltinTrait:
+    def __init__(self, inferrer: BidirectionalTypeInference, name: str, type_vars: list[IRTypeVarType], methods: list[Method]):
+        self.inferrer = inferrer
+        self.name = name
+        self.type_vars = type_vars
+        self.methods = methods
+
+        self.reifications: dict[tuple[IRResolvedType, ...], IRTrait] = {}
+
+    @staticmethod
+    def create_type_var(name: str) -> IRTypeVarType:
+        type_var = IRTypeVariable(name, None, IRTypeDecl(IRUnresolvedUnknownType(), BuiltinLocation()))
+        type_v = type_var.type_decl.type = IRTypeVarType(type_var)
+        return type_v
+
+    def callback(self, trait: IRTrait, arguments: dict[IRTypeVarType, IRResolvedType], loc: Location) -> IRTrait:
+        if len(arguments) != len(self.type_vars):
+            raise CompilerMessage(ErrorType.COMPILATION, f"Mismatched number of arguments to generic (expected {len(self.type_vars)}, got {len(arguments)}):", loc)
+        types = []
+        with self.inferrer.substitutions.replace(arguments):
+            for type in trait.type_args:
+                types.append(self.inferrer.resolve_type(type))
+            if tuple(types) not in self.reifications:
+                self.create_variant(trait, types)
+        return self.reifications[tuple(types)]
+
+    def create_base(self, decl: IRTypeDecl) -> IRTrait:
+        trait_loc = BuiltinLocation()
+        if decl is None:
+            decl = IRTypeDecl(IRUnresolvedUnknownType(), trait_loc)
+        trait = IRTrait(
+            decl, self.name, [], tuple(self.type_vars), self.reifications, lambda a, l: self.callback(trait, a, l)
+        )
+        trait_type = trait.type_decl.type = IRTraitType(trait)
+
+        for method in self.methods:
+            params: list[IRResolvedType] = (cast(list[IRResolvedType], [trait_type]) if method.is_self else []) + [self.inferrer.resolve_type(param) for _, param in method.params]
+            method_type = IRFunctionType(params, self.inferrer.resolve_type(method.ret))
+            method_decl = IRValueDecl(method_type, trait_loc, False)
+
+            def method_callback(arguments: dict[IRTypeVarType, IRResolvedType], loc: Location, name=method.name) -> IRValue:
+                struct = self.callback(trait, arguments, loc)
+                method_ = struct.methods[struct.has_method(name)]
+                return IRValue(method_.function.function_type, method_.function.decl)
+
+            ir_method = IRMethod(method.name, True, False, method.is_self, IRFunction(
+                method_decl, method.name, tuple(self.type_vars), ([
+                    IRParameter(IRValueDecl(trait_type, trait_loc, True), "self", trait_type)
+                ] if method.is_self else []) + [
+                    IRParameter.create(name, self.inferrer.resolve_type(param)) for name, param in method.params
+                ], self.inferrer.resolve_type(method.ret), IRBlock([], [], False), False, True, method_callback, {}
+            ))
+            trait.methods.append(ir_method)
+        self.reifications[tuple(self.type_vars)] = trait
+        if trait_type.is_concrete():
+            self.inferrer.program.traits.append(trait)
+        return trait
+
+    def create_variant(self, generic: IRTrait, types: list[IRResolvedType]) -> IRTrait:
+        trait_loc = BuiltinLocation()
+        decl = IRTypeDecl(IRUnresolvedUnknownType(), trait_loc)
+        trait = IRTrait(
+            decl, self.name, [], tuple(types), self.reifications, lambda a, l: self.callback(trait, a, l)
+        )
+        trait_type = trait.type_decl.type = IRTraitType(trait)
+        self.reifications[tuple(types)] = trait
+
+        for method in generic.methods:
+            params: list[IRResolvedType] = [self.inferrer.resolve_type(param.type) for param in method.function.parameters]
+            method_type = IRFunctionType(params, self.inferrer.resolve_type(method.function.return_type))
+            method_decl = IRValueDecl(method_type, trait_loc, False)
+
+            def method_callback(arguments: dict[IRTypeVarType, IRResolvedType], loc: Location, name=method.name) -> IRValue:
+                struct = self.callback(trait, arguments, loc)
+                method_ = struct.methods[struct.has_method(name)]
+                return IRValue(method_.function.function_type, method_.function.decl)
+
+            ir_method = IRMethod(method.name, True, False, method.is_self, IRFunction(
+                method_decl, method.name, tuple(types), [
+                    IRParameter.create(param.name, self.inferrer.resolve_type(param.type)) for param in method.function.parameters
+                ], self.inferrer.resolve_type(method.function.return_type), IRBlock([], [], False), False, True, method_callback, {}
+            ))
+            trait.methods.append(ir_method)
+        if trait_type.is_concrete():
+            self.inferrer.program.traits.append(trait)
+        return trait
+
+
 class Return(NamedTuple):
     type: IRResolvedType
     loc: Location
@@ -274,6 +369,10 @@ class BidirectionalTypeInference:
 
     def infer_types(self):
         self.create_array_type(self.program.array_decl, self.program.array_constructor_decl)
+
+        t = BuiltinTrait.create_type_var("Item")
+        index = BuiltinTrait(self, "Index", [t], [Method("get", [("index", IRIntegerType(64))], t, True)])
+        index.create_base(self.program.ops["Index"])
 
         initial_traits = self.program.traits[:]
         initial_structs = self.program.structs[:]
