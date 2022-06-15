@@ -476,10 +476,10 @@ class ParseState:
                     op = "Mod"
                 case _:
                     raise ValueError()
-            if isinstance(left, ASTNameExpr):
-                return ASTAssign(left, op, right, self.pop_loc().combine(left.loc))
-            elif isinstance(left, ASTAttrExpr):
-                return ASTAttrAssign(left.object, left.attr, op, right, self.pop_loc().combine(left.loc))
+            if isinstance(left_expr, ASTNameExpr):
+                return ASTAssign(left_expr, op, right, self.pop_loc().combine(left.loc))
+            elif isinstance(left_expr, ASTAttrExpr):
+                return ASTAttrAssign(left_expr.object, left_expr.attr, op, right, self.pop_loc().combine(left.loc))
             else:
                 raise CompilerMessage(ErrorType.PARSE, "Can only assign to identifiers or attributes", left.loc)
         else:

@@ -79,11 +79,10 @@ class ResolveNames:
     def collect_program(self, program: ASTProgram):
         ns = self.push(self.program_namespace)
         ns.declare_type("int", IRTypeDecl(IRIntegerType(64), BuiltinLocation()))
-        # ns.declare_type("str", IRTypeDecl(IRStringType(), BuiltinLocation()))
         ns.declare_type("bool", IRTypeDecl(IRBoolType(), BuiltinLocation()))
 
-        self.ir_program.array_decl = ns.declare_type("Array", IRTypeDecl(IRUnresolvedUnknownType(), BuiltinLocation()))
-        self.ir_program.array_constructor_decl = ns.declare_value("Array", IRValueDecl(IRUnresolvedUnknownType(), BuiltinLocation(), False))
+        self.ir_program.array_decl = ns.declare_type("_array", IRTypeDecl(IRUnresolvedUnknownType(), BuiltinLocation()))
+        self.ir_program.array_constructor_decl = ns.declare_value("_array", IRValueDecl(IRUnresolvedUnknownType(), BuiltinLocation(), False))
 
         for file in program.files:
             self.collect_file(file)

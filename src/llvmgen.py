@@ -252,34 +252,13 @@ class LLVMGen:
         mem = self.builder.call(self.external_functions["malloc"], [ir.Constant(ir.IntType(64), self.size_of(struct_type))])
         obj = self.builder.bitcast(mem, struct_type.as_pointer())
 
-        closure, size, fn_struct_p = constructor.args
-        fn_ptr = self.builder.load(self.gep(fn_struct_p, [0, 0]))
-        closure_ptr = self.builder.load(self.gep(fn_struct_p, [0, 1]))
+        closure, size = constructor.args
 
-        # alloc_size = self.builder.mul(i64(self.size_of(value_type)), size)
         memory = self.builder.call(self.external_functions["calloc"], [size, i64(self.size_of(value_type))])
         memory = self.builder.bitcast(memory, value_type.as_pointer())
         self.builder.store(memory, self.gep(obj, [0, 0]))
         self.builder.store(size, self.gep(obj, [0, 1]))
-
-        counter = self.builder.alloca(ir.IntType(64))
-        self.builder.store(ir.Constant(ir.IntType(64), 0), counter)
-        cond_block = self.builder.append_basic_block()
-        body_block = self.builder.append_basic_block()
-        after_block = self.builder.append_basic_block()
-        self.builder.branch(cond_block)
-        with self.builder.goto_block(cond_block):
-            self.builder.cbranch(self.builder.icmp_signed("<", self.builder.load(counter), size), body_block,
-                                 after_block)
-
-        with self.builder.goto_block(body_block):
-            value = self.builder.call(fn_ptr, [closure_ptr] + [self.builder.load(counter)])
-            self.builder.store(value, self.builder.gep(memory, [self.builder.load(counter)]))
-            self.builder.store(self.builder.add(self.builder.load(counter), ir.Constant(ir.IntType(64), 1)), counter)
-            self.builder.branch(cond_block)
-
-        with self.builder.goto_block(after_block):
-            self.builder.ret(obj)
+        self.builder.ret(obj)
 
     def generate_constructor(self, struct: IRStruct, struct_type: ir.PointerType):
         constructor_type = ir.FunctionType(struct_type, [self.void_p_type] + [self.generate_type(field.type) for field in struct.fields])

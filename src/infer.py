@@ -119,7 +119,7 @@ class BidirectionalTypeInference:
         array = IRStruct(
             type_decl,
             value_decl,
-            "Array", [], [], [], (IRTypeVarType(array_type_var),), self.program.array_reifications,
+            "_array", [], [], [], (IRTypeVarType(array_type_var),), self.program.array_reifications,
             lambda a, l: self.array_callback(array, a, l)
         )
         array_type = array.type_decl.type = IRStructType(array)
@@ -129,8 +129,7 @@ class BidirectionalTypeInference:
             return IRValue(cast(IRFunctionType, struct.constructor.type), struct.constructor)
 
         array_func = IRFunction(value_decl, array.name, array.type_args, [
-            IRParameter(IRValueDecl(IRIntegerType(64), array_loc, True), "length", IRIntegerType(64)),
-            IRParameter(IRValueDecl(IRFunctionType([IRIntegerType(64)], type_var), array_loc, True), "func", type_var)
+            IRParameter(IRValueDecl(IRIntegerType(64), array_loc, True), "length", IRIntegerType(64))
         ], array_type, IRBlock([], [], False), False, True, constructor_callback, {})
         array.constructor.type = array_func.function_type
 
@@ -143,7 +142,7 @@ class BidirectionalTypeInference:
         get_decl = IRValueDecl(get_type, array_loc, False)
         get_method = IRMethod(
             "get", False, True, True,
-            IRFunction(get_decl, f"Array[{array_type}]::get", (type_var,), [
+            IRFunction(get_decl, f"_array[{array_type}]::get", (type_var,), [
                 IRParameter(IRValueDecl(array_type, array_loc, True), "self", array_type),
                 IRParameter(IRValueDecl(IRIntegerType(64), array_loc, True), "index", IRIntegerType(64))
             ], type_var, IRBlock([], [], False), False, True, get_callback, {})
@@ -159,7 +158,7 @@ class BidirectionalTypeInference:
         set_decl = IRValueDecl(set_type, array_loc, False)
         set_method = IRMethod(
             "set", False, True, True,
-            IRFunction(set_decl, f"Array[{array_type}]::set", (type_var,), [
+            IRFunction(set_decl, f"_array[{array_type}]::set", (type_var,), [
                 IRParameter(IRValueDecl(array_type, array_loc, True), "self", array_type),
                 IRParameter(IRValueDecl(IRIntegerType(64), array_loc, True), "index", IRIntegerType(64)),
                 IRParameter(IRValueDecl(type_var, array_loc, True), "value", array_type)
@@ -184,7 +183,7 @@ class BidirectionalTypeInference:
         array = IRStruct(
             IRTypeDecl(IRUnresolvedUnknownType(), array_loc),
             array_constructor,
-            f"Array", [], [], [], (type,), self.program.array_reifications,
+            f"_array", [], [], [], (type,), self.program.array_reifications,
             lambda a, l: self.array_callback(array, a, l)
         )
         array_type = array.type_decl.type = IRStructType(array)
@@ -194,8 +193,7 @@ class BidirectionalTypeInference:
             return IRValue(cast(IRFunctionType, struct.constructor.type), struct.constructor)
 
         array_func = IRFunction(array_constructor, array.name, array.type_args, [
-            IRParameter(IRValueDecl(IRIntegerType(64), array_loc, True), "length", IRIntegerType(64)),
-            IRParameter(IRValueDecl(IRFunctionType([IRIntegerType(64)], type), array_loc, True), "func", IRFunctionType([IRIntegerType(64)], type))
+            IRParameter(IRValueDecl(IRIntegerType(64), array_loc, True), "length", IRIntegerType(64))
         ], array_type, IRBlock([], [], False), False, True, constructor_callback, {})
         array.constructor.type = array_func.function_type
 
@@ -208,7 +206,7 @@ class BidirectionalTypeInference:
         get_decl = IRValueDecl(get_type, array_loc, False)
         get_method = IRMethod(
             "get", False, True, True,
-            IRFunction(get_decl, f"Array[{type}]::get", (type,), [
+            IRFunction(get_decl, f"_array[{type}]::get", (type,), [
                 IRParameter(IRValueDecl(array_type, array_loc, True), "self", array_type),
                 IRParameter(IRValueDecl(IRIntegerType(64), array_loc, True), "index", IRIntegerType(64))
             ], type, IRBlock([], [], False), False, True, get_callback, {})
@@ -224,7 +222,7 @@ class BidirectionalTypeInference:
         set_decl = IRValueDecl(set_type, array_loc, False)
         set_method = IRMethod(
             "set", False, True, True,
-            IRFunction(set_decl, f"Array[{type}]::set", (type,),[
+            IRFunction(set_decl, f"_array[{type}]::set", (type,),[
                 IRParameter(IRValueDecl(array_type, array_loc, True), "self", array_type),
                 IRParameter(IRValueDecl(IRIntegerType(64), array_loc, True), "index", IRIntegerType(64)),
                 IRParameter(IRValueDecl(type, array_loc, True), "value", type)
@@ -286,6 +284,9 @@ class BidirectionalTypeInference:
         for struct in initial_structs:
             self.infer_struct_type(struct)
 
+        for function in initial_functions:
+            self.infer_function_type(function)
+
         for trait in initial_traits:
             self.infer_trait_body(trait)
 
@@ -297,9 +298,6 @@ class BidirectionalTypeInference:
 
         for struct in initial_structs:
             self.infer_struct_methods(struct)
-
-        for function in initial_functions:
-            self.infer_function_type(function)
 
         for function in initial_functions:
             self.infer_function_body(function)
