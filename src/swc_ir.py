@@ -3,17 +3,95 @@ from __future__ import annotations
 from typing import Callable
 from dataclasses import dataclass, field
 
-from .common import Location, BuiltinLocation, NamedTuple, UniqueList
+from .common import Location, BuiltinLocation, NamedTuple, UniqueList, CompilerMessage, ErrorType
 
 
 
 __all__ = ['IRNode', 'IRValue', 'IRTypeVarType', 'IRType', 'IRBlock', 'IRValueDecl', 'IRIntegerType', "IRFunctionType",
-           'IRParameter', 'IRFunction', 'IRTypeDecl', 'IRNameExpr', "IRResolvedType", 'IRTypeVariable',
+           'IRParameter', 'IRFunction', 'IRTypeDecl', 'IRNameExpr', "IRResolvedType", 'IRTypeVariable', 'IRResolvedName',
            'IRUnresolvedUnknownType', 'IRExpr', 'IRStruct', 'IRStructType', 'IRUnresolvedGenericType', 'IRMethod',
            'IRUnitType', 'IRUnresolvedNameType', 'IRProgram', 'IRMethodCallExpr', 'IRField', 'IRAttrExpr', 'IRExprStmt',
            'IRWhileStmt', 'IRDeclStmt', 'IRUnresolvedFunctionType', 'IRNotExpr', 'IRNegExpr', 'IRLambda', 'IRAttrAssign',
            'IRAssign', 'IRIf', 'IRBoolType', 'IRIntegerExpr', 'IRGenericExpr', 'IRReturnStmt', 'IRCallExpr', 'IRBinaryExpr',
-           'IRStmt', 'IRUnresolvedType', 'ArrayVariant', 'IRTrait', 'IRTraitType']
+           'IRStmt', 'IRUnresolvedType', 'ArrayVariant', 'IRTrait', 'IRTraitType', "Namespace", "IRName",]
+
+
+def check_name(name: str) -> bool:
+    if len(name) == 0:
+        return False
+    if not (name[0] == "_" or name[0].isalpha()):
+        return False
+    if not all(c == "_" or c.isalnum() for c in name[1:]):
+        return False
+    return True
+
+
+def validate_name(name: str, loc: Location):
+    if not check_name(name):
+        raise CompilerMessage(ErrorType.COMPILATION, f"'{name}' is not a valid name", loc)
+
+
+class Namespace:
+    def __init__(self, *, is_lambda: bool = False):
+        self.value_names: dict[str, IRValueDecl] = {}
+        self.type_names: dict[str, IRTypeDecl] = {}
+        self.namespace_names: dict[str, Namespace] = {}
+
+        self.is_lambda = is_lambda
+        self.exterior_names: list[IRValueDecl] = []
+
+        self.not_yet_imported: set[str] = set()
+
+    def declare_namespace(self, name: str, namespace: Namespace, loc: Location) -> Namespace:
+        validate_name(name, loc)
+        if self.has_namespace(name):
+            raise CompilerMessage(ErrorType.COMPILATION, f"Name '{name}' is already used as a namespace in this scope", loc)
+        self.namespace_names[name] = namespace
+        return namespace
+
+    def has_namespace(self, name: str) -> bool:
+        return name in self.namespace_names
+
+    def get_namespace(self, name: str, loc: Location) -> Namespace:
+        if self.has_namespace(name):
+            return self.namespace_names[name]
+        else:
+            raise CompilerMessage(ErrorType.COMPILATION, f"Name '{name}' does not exist for a namespace in this scope", loc)
+
+    def has_value(self, name: str) -> bool:
+        return name in self.value_names
+
+    def declare_value(self, name: str, decl: IRValueDecl) -> IRValueDecl:
+        validate_name(name, decl.location)
+        if self.has_value(name):
+            raise CompilerMessage(ErrorType.COMPILATION, f"Name '{name}' is already used as a value in this scope", decl.location,
+                                  [CompilerMessage(ErrorType.NOTE, "Previously declared here", self.get_value(name, decl.location).location)])
+        self.value_names[name] = decl
+        return decl
+
+    def get_value(self, name: str, loc: Location) -> IRValueDecl:
+        if self.has_value(name):
+            return self.value_names[name]
+        else:
+            raise CompilerMessage(ErrorType.COMPILATION, f"Name '{name}' does not exist for a value in this scope", loc)
+
+    def has_type(self, name: str) -> bool:
+        return name in self.type_names
+
+    def declare_type(self, name: str, decl: IRTypeDecl) -> IRTypeDecl:
+        validate_name(name, decl.location)
+        if self.has_type(name):
+            raise CompilerMessage(ErrorType.COMPILATION, f"Name '{name}' is already used as a type in this scope", decl.location,
+                                  [CompilerMessage(ErrorType.NOTE, "Previously declared here", self.get_type(name, decl.location).location)])
+        self.type_names[name] = decl
+        return decl
+
+    def get_type(self, name: str, loc: Location) -> IRTypeDecl:
+        if self.has_type(name):
+            return self.type_names[name]
+        else:
+            raise CompilerMessage(ErrorType.COMPILATION, f"Name '{name}' does not exist for a type in this scope", loc)
+
 
 
 @dataclass()
@@ -510,6 +588,21 @@ class IRReturnStmt(IRStmt):
 
 
 @dataclass()
+class IRName(IRNode):
+    pass
+
+
+@dataclass()
+class IRResolvedName(IRName):
+    ns: Namespace
+
+
+@dataclass()
+class IRGenericName(IRName):
+    ns: Namespace
+
+
+@dataclass()
 class IRExpr(IRNode):
     yield_type: IRResolvedType | None = field(init=False, default=None)
     cast: IRResolvedType | None = field(init=False, default=None)
@@ -607,7 +700,7 @@ class IRMethodCallExpr(IRExpr):
 
 @dataclass()
 class IRGenericExpr(IRExpr):
-    generic: IRExpr
+    generic: IRNameExpr
     arguments: list[IRType]
 
     replacement_expr: IRExpr | None = field(init=False, default=None)

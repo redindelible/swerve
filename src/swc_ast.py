@@ -2,17 +2,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .common import Location, SourceLocation
+from .common import Location, SourceLocation, CompilerMessage, ErrorType
 from .tokens import Token, TokenType
 
 
 __all__ = ["ASTFunction", "ASTParameter", "ASTStmt", "ASTLetStmt", "ASTVarStmt", "ASTExprStmt", "ASTExpr", "ASTBlockExpr",
     "ASTReturnStmt", "ASTAssign", "ASTAddExpr", "ASTSubExpr", "ASTMulExpr", "ASTDivExpr", "ASTPowExpr", "ASTOrExpr", "ASTAndExpr",
-    "ASTNegExpr", "ASTNotExpr", "ASTCallExpr", "ASTAttrExpr", "ASTIntegerExpr", "ASTStringExpr", "ASTGroupExpr", "ASTIdentExpr",
-    "ASTType", "ASTTypeIdent", "ASTFile", "ASTNode", "ASTProgram", "ASTTopLevel", "ASTStruct", "ASTTypeVariable", "ASTMethod",
-    "ASTStructField", "ASTImport", "ASTBinaryExpr", "ASTForStmt", "ASTIfExpr", "ASTWhileStmt", "ASTTypeGeneric", "ASTGenericExpr",
-    "ASTLessExpr", "ASTLessEqualExpr", "ASTGreaterExpr", "ASTGreaterEqualExpr", "ASTAttrAssign", "ASTTypeUnit", "ASTTypeFunction",
-    "ASTLambda", "ASTEqualExpr", "ASTNotEqualExpr", "ASTModExpr", "ASTGenericFunction", "ASTTrait"]
+    "ASTNegExpr", "ASTNotExpr", "ASTCallExpr", "ASTAttrExpr", "ASTIntegerExpr", "ASTNameExpr", "ASTMaybeUnit", "ASTGenericAttrExpr",
+    "ASTType", "ASTNameType", "ASTFile", "ASTNode", "ASTProgram", "ASTTopLevel", "ASTStruct", "ASTTypeVariable", "ASTMethod",
+    "ASTStructField", "ASTImport", "ASTBinaryExpr", "ASTForStmt", "ASTIfExpr", "ASTWhileStmt", "ASTGenericType", "ASTGenericExpr",
+    "ASTLessExpr", "ASTLessEqualExpr", "ASTGreaterExpr", "ASTGreaterEqualExpr", "ASTAttrAssign", "ASTUnitType", "ASTFunctionType",
+    "ASTLambda", "ASTEqualExpr", "ASTNotEqualExpr", "ASTModExpr", "ASTGenericFunction", "ASTTrait", "ASTMaybeExpr",
+    "ASTIndexExpr", "ASTMaybeName", "ASTIndexOrGenericExpr", "ASTNamespace", "ASTMaybeGeneric"]
 
 
 class ASTNode:
@@ -165,7 +166,101 @@ class ASTReturnStmt(ASTStmt):
         self.expr = expr
 
 
-class ASTExpr(ASTNode):
+class ASTMaybeExpr(ASTNode):
+    @staticmethod
+    def is_certain() -> bool:
+        return False
+
+    def as_expr(self) -> ASTExpr:
+        raise CompilerMessage(ErrorType.PARSE, f"Could not interpret this as an expression", self.loc)
+
+    def as_type(self) -> ASTType:
+        raise CompilerMessage(ErrorType.PARSE, f"Could not interpret this as a type", self.loc)
+
+    def as_namespace(self) -> ASTNamespace:
+        raise CompilerMessage(ErrorType.PARSE, f"Could not interpret this as a namespace", self.loc)
+
+
+class ASTMaybeName(ASTMaybeExpr):
+    def __init__(self, name: str, ns: ASTNamespace | None, loc: Location):
+        super().__init__(loc)
+        self.name = name
+        self.ns = ns
+
+    def as_expr(self) -> ASTNameExpr:
+        return ASTNameExpr(self.name, self.ns, self.loc)
+
+    def as_type(self) -> ASTNameType:
+        return ASTNameType(self.name, self.ns, self.loc)
+
+    def as_namespace(self) -> ASTNamespace:
+        return ASTNamespace(self.name, self.ns, self.loc)
+
+
+class ASTMaybeUnit(ASTMaybeExpr):
+    def __init__(self, loc: Location):
+        super().__init__(loc)
+
+    def as_type(self) -> ASTUnitType:
+        return ASTUnitType(self.loc)
+
+
+class ASTMaybeGeneric(ASTMaybeExpr):
+    def __init__(self, generic: ASTMaybeExpr, arguments: list[ASTMaybeExpr], loc: Location):
+        super().__init__(loc)
+        self.generic = generic
+        self.arguments = arguments
+
+    def as_expr(self) -> ASTExpr:
+        generic = self.generic
+        if len(self.arguments) == 1:
+            arg = self.arguments[0]
+            can_be_expr = False
+            try:
+                arg.as_expr()
+                can_be_expr = True
+            except CompilerMessage:
+                pass
+            can_be_type = False
+            try:
+                arg.as_type()
+                can_be_type = True
+            except CompilerMessage:
+                pass
+            if isinstance(generic, ASTMaybeName):
+                if can_be_expr and can_be_type:
+                    return ASTIndexOrGenericExpr(generic.as_expr(), arg, self.loc)
+                elif can_be_type:
+                    return ASTGenericExpr(generic.as_expr(), [arg.as_type()], self.loc)
+                elif can_be_expr:
+                    return ASTIndexExpr(generic.as_expr(), arg.as_expr(), self.loc)
+                else:
+                    raise CompilerMessage(ErrorType.PARSE, f"Cannot interpret as an expression", self.loc)
+            else:
+                return ASTIndexExpr(generic.as_expr(), arg.as_expr(), self.loc)
+        else:
+            if isinstance(generic, ASTMaybeName):
+                return ASTGenericExpr(generic.as_expr(), [arg.as_type() for arg in self.arguments], self.loc)
+            else:
+                raise CompilerMessage(ErrorType.PARSE, f"Cannot interpret as an expression", self.loc)
+
+    def as_type(self) -> ASTGenericType:
+        generic = self.generic
+        if isinstance(generic, ASTMaybeName):
+            return ASTGenericType(generic.as_type(), [arg.as_type() for arg in self.arguments], self.loc)
+        else:
+            raise CompilerMessage(ErrorType.PARSE, f"Cannot interpret as a type", self.loc)
+
+
+
+class ASTExpr(ASTMaybeExpr):
+    @staticmethod
+    def is_certain():
+        return True
+
+    def as_expr(self) -> ASTExpr:
+        return self
+
     @staticmethod
     def requires_semicolon():
         return True
@@ -195,7 +290,7 @@ class ASTBlockExpr(ASTExpr):
 
 
 class ASTAssign(ASTExpr):
-    def __init__(self, name: ASTIdentExpr, op: str, value: ASTExpr, location: Location):
+    def __init__(self, name: ASTNameExpr, op: str, value: ASTExpr, location: Location):
         super().__init__(location)
         self.name: str = name.ident
         self.op = op
@@ -303,8 +398,22 @@ class ASTCallExpr(ASTExpr):
         self.arguments = arguments
 
 
+class ASTIndexOrGenericExpr(ASTExpr):
+    def __init__(self, obj: ASTNameExpr, index_or_arg: ASTMaybeExpr, loc: Location):
+        super().__init__(loc)
+        self.obj = obj
+        self.index_or_arg = index_or_arg
+
+
+class ASTIndexExpr(ASTExpr):
+    def __init__(self, obj: ASTExpr, index: ASTExpr, loc: Location):
+        super().__init__(loc)
+        self.obj = obj
+        self.index = index
+
+
 class ASTGenericExpr(ASTExpr):
-    def __init__(self, generic: ASTExpr, arguments: list[ASTType], loc: Location):
+    def __init__(self, generic: ASTNameExpr, arguments: list[ASTType], loc: Location):
         super().__init__(loc)
         self.generic = generic
         self.arguments = arguments
@@ -328,49 +437,64 @@ class ASTIntegerExpr(ASTExpr):
             self.number: int = int(number.text, 10)
 
 
-class ASTStringExpr(ASTExpr):
-    def __init__(self, string: Token):
-        super().__init__(string.location)
-        self.string = string.text[1:-1]
-        #TODO replace \ things
+class ASTNameExpr(ASTExpr):
+    def __init__(self, name: str, ns: ASTNamespace | None, loc: Location):
+        super().__init__(loc)
+        self.ident = name
+        self.ns = ns
 
 
-class ASTGroupExpr(ASTExpr):
-    def __init__(self, expr: ASTExpr, location: Location):
-        super().__init__(location)
-        self.expr = expr
+class ASTGenericAttrExpr(ASTExpr):
+    def __init__(self, generic: ASTGenericType, name: str, loc: Location):
+        super().__init__(loc)
+        self.generic = generic
+        self.name = name
 
 
-class ASTIdentExpr(ASTExpr):
-    def __init__(self, ident: Token):
-        super().__init__(ident.location)
-        self.ident: str = ident.text
+class ASTType(ASTMaybeExpr):
+    @staticmethod
+    def is_certain():
+        return True
+
+    def as_type(self) -> ASTType:
+        return self
 
 
-class ASTType(ASTNode):
-    pass
-
-
-class ASTTypeGeneric(ASTType):
-    def __init__(self, generic: ASTType, type_arguments: list[ASTType], loc: Location):
+class ASTGenericType(ASTType):
+    def __init__(self, generic: ASTNameType, type_arguments: list[ASTType], loc: Location):
         super().__init__(loc)
         self.generic = generic
         self.type_arguments = type_arguments
 
 
-class ASTTypeIdent(ASTType):
-    def __init__(self, name: str, loc: Location):
+class ASTNameType(ASTType):
+    def __init__(self, name: str, ns: ASTNamespace | None, loc: Location):
         super().__init__(loc)
         self.name: str = name
+        self.ns = ns
 
 
-class ASTTypeFunction(ASTType):
+class ASTFunctionType(ASTType):
     def __init__(self, parameters: list[ASTType], ret_type: ASTType, loc: Location):
         super().__init__(loc)
         self.parameters = parameters
         self.ret_type = ret_type
 
 
-class ASTTypeUnit(ASTType):
+class ASTUnitType(ASTType):
     def __init__(self, loc: Location):
         super().__init__(loc)
+
+
+class ASTNamespace(ASTMaybeExpr):
+    def __init__(self, name: str, ns: ASTNamespace, loc: Location):
+        super().__init__(loc)
+        self.name = name
+        self.ns = ns
+
+    @staticmethod
+    def is_certain() -> bool:
+        return True
+
+    def as_namespace(self) -> ASTNamespace:
+        return self

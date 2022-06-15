@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 from .swc_ast import *
 from .swc_ir import *
 from .common import BuiltinLocation, CompilerMessage, ErrorType, Location, Path
@@ -10,83 +12,6 @@ def resolve_names(program: ASTProgram):
     resolver.collect_names()
     resolver.resolve_imports()
     return resolver.resolve_names()
-
-
-class Namespace:
-    def __init__(self, *, is_lambda: bool = False):
-        self.value_names: dict[str, IRValueDecl] = {}
-        self.type_names: dict[str, IRTypeDecl] = {}
-        self.namespace_names: dict[str, Namespace] = {}
-
-        self.is_lambda = is_lambda
-        self.exterior_names: list[IRValueDecl] = []
-
-        self.not_yet_imported: set[str] = set()
-
-    def declare_namespace(self, name: str, namespace: Namespace, loc: Location) -> Namespace:
-        validate_name(name, loc)
-        if self.has_namespace(name):
-            raise CompilerMessage(ErrorType.COMPILATION, f"Name '{name}' is already used as a namespace in this scope", loc)
-        self.namespace_names[name] = namespace
-        return namespace
-
-    def has_namespace(self, name: str) -> bool:
-        return name in self.namespace_names
-
-    def get_namespace(self, name: str, loc: Location) -> Namespace:
-        if self.has_namespace(name):
-            return self.namespace_names[name]
-        else:
-            raise CompilerMessage(ErrorType.COMPILATION, f"Name '{name}' does not exist for a namespace in this scope", loc)
-
-    def has_value(self, name: str) -> bool:
-        return name in self.value_names
-
-    def declare_value(self, name: str, decl: IRValueDecl) -> IRValueDecl:
-        validate_name(name, decl.location)
-        if self.has_value(name):
-            raise CompilerMessage(ErrorType.COMPILATION, f"Name '{name}' is already used as a value in this scope", decl.location,
-                                  [CompilerMessage(ErrorType.NOTE, "Previously declared here", self.get_value(name, decl.location).location)])
-        self.value_names[name] = decl
-        return decl
-
-    def get_value(self, name: str, loc: Location) -> IRValueDecl:
-        if self.has_value(name):
-            return self.value_names[name]
-        else:
-            raise CompilerMessage(ErrorType.COMPILATION, f"Name '{name}' does not exist for a value in this scope", loc)
-
-    def has_type(self, name: str) -> bool:
-        return name in self.type_names
-
-    def declare_type(self, name: str, decl: IRTypeDecl) -> IRTypeDecl:
-        validate_name(name, decl.location)
-        if self.has_type(name):
-            raise CompilerMessage(ErrorType.COMPILATION, f"Name '{name}' is already used as a type in this scope", decl.location,
-                                  [CompilerMessage(ErrorType.NOTE, "Previously declared here", self.get_type(name, decl.location).location)])
-        self.type_names[name] = decl
-        return decl
-
-    def get_type(self, name: str, loc: Location) -> IRTypeDecl:
-        if self.has_type(name):
-            return self.type_names[name]
-        else:
-            raise CompilerMessage(ErrorType.COMPILATION, f"Name '{name}' does not exist for a type in this scope", loc)
-
-
-def check_name(name: str) -> bool:
-    if len(name) == 0:
-        return False
-    if not (name[0] == "_" or name[0].isalpha()):
-        return False
-    if not all(c == "_" or c.isalnum() for c in name[1:]):
-        return False
-    return True
-
-
-def validate_name(name: str, loc: Location):
-    if not check_name(name):
-        raise CompilerMessage(ErrorType.COMPILATION, f"'{name}' is not a valid name", loc)
 
 
 class ResolveNames:
@@ -126,6 +51,13 @@ class ResolveNames:
                 return ns.get_type(name, loc)
         else:
             raise CompilerMessage(ErrorType.COMPILATION, f"Name '{name}' does not exist for a type in this scope", loc)
+
+    def get_namespace(self, name: str, loc: Location) -> Namespace:
+        for ns in reversed(self.namespaces):
+            if ns.has_namespace(name):
+                return ns.get_namespace(name, loc)
+        else:
+            raise CompilerMessage(ErrorType.COMPILATION, f"Name '{name}' does not exist for a namespace in this scope", loc)
 
     def get_value(self, name: str, loc: Location) -> IRValueDecl:
         lambdas_to_add_to: list[Namespace] = []
@@ -434,6 +366,13 @@ class ResolveNames:
         else:
             raise ValueError()
 
+    def resolve_namespace(self, namespace: ASTNamespace) -> Namespace:
+        if namespace.ns is None:
+            return self.get_namespace(namespace.name, namespace.loc)
+        else:
+            ns = self.resolve_namespace(namespace.ns)
+            return ns.get_namespace(namespace.name, namespace.loc)
+
     def resolve_expr(self, expr: ASTExpr) -> IRExpr:
         if isinstance(expr, ASTBlockExpr):
             return self.resolve_body(expr)
@@ -446,19 +385,19 @@ class ResolveNames:
         elif isinstance(expr, ASTCallExpr):
             return IRCallExpr(self.resolve_expr(expr.callee), [self.resolve_expr(arg) for arg in expr.arguments]).set_loc(expr.loc)
         elif isinstance(expr, ASTGenericExpr):
-            return IRGenericExpr(self.resolve_expr(expr.generic), [self.resolve_type(arg) for arg in expr.arguments]).set_loc(expr.loc)
+            return IRGenericExpr(cast(IRNameExpr, self.resolve_expr(expr.generic)), [self.resolve_type(arg) for arg in expr.arguments]).set_loc(expr.loc)
         elif isinstance(expr, ASTIntegerExpr):
             return IRIntegerExpr(expr.number).set_loc(expr.loc)
-        # elif isinstance(expr, ASTStringExpr):
-        #     return IRStringExpr(expr.string).set_loc(expr.loc)
-        elif isinstance(expr, ASTGroupExpr):
-            return self.resolve_expr(expr.expr).set_loc(expr.loc)
         elif isinstance(expr, ASTNegExpr):
             return IRNegExpr(self.resolve_expr(expr.right)).set_loc(expr.loc)
         elif isinstance(expr, ASTNotExpr):
             return IRNotExpr(self.resolve_expr(expr.right)).set_loc(expr.loc)
-        elif isinstance(expr, ASTIdentExpr):
-            return IRNameExpr(self.get_value(expr.ident, expr.loc)).set_loc(expr.loc)
+        elif isinstance(expr, ASTNameExpr):
+            if expr.ns is None:
+                return IRNameExpr(self.get_value(expr.ident, expr.loc)).set_loc(expr.loc)
+            else:
+                ns = self.resolve_namespace(expr.ns)
+                return IRNameExpr(ns.get_value(expr.ident, expr.loc)).set_loc(expr.loc)
         elif isinstance(expr, ASTAssign):
             return IRAssign(self.get_value(expr.name, expr.loc), expr.op, self.resolve_expr(expr.value)).set_loc(expr.loc)
         elif isinstance(expr, ASTAttrAssign):
@@ -498,13 +437,13 @@ class ResolveNames:
         return IRBlock(stmts, list(ns.value_names.values()), body.return_unit).set_loc(body.loc)
 
     def resolve_type(self, type: ASTType) -> IRType:
-        if isinstance(type, ASTTypeIdent):
+        if isinstance(type, ASTNameType):
             return IRUnresolvedNameType(self.get_type(type.name, type.loc)).set_loc(type.loc)
-        elif isinstance(type, ASTTypeGeneric):
+        elif isinstance(type, ASTGenericType):
             return IRUnresolvedGenericType(self.resolve_type(type.generic), [self.resolve_type(arg) for arg in type.type_arguments]).set_loc(type.loc)
-        elif isinstance(type, ASTTypeUnit):
+        elif isinstance(type, ASTUnitType):
             return IRUnitType().set_loc(type.loc)
-        elif isinstance(type, ASTTypeFunction):
+        elif isinstance(type, ASTFunctionType):
             return IRUnresolvedFunctionType([self.resolve_type(param) for param in type.parameters], self.resolve_type(type.ret_type)).set_loc(type.loc)
         else:
             raise ValueError(type)

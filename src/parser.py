@@ -400,10 +400,16 @@ class ParseState:
         else:
             return ASTLetStmt(token, name, type, init, self.pop_loc())
 
-    def parse_expr(self) -> ASTExpr:
+    def parse_maybe_expr(self) -> ASTMaybeExpr:
         return self.parse_precedence_1()
 
-    def parse_precedence_1(self) -> ASTExpr:
+    def parse_expr(self) -> ASTExpr:
+        return self.parse_maybe_expr().as_expr()
+
+    def parse_type(self) -> ASTType:
+        return self.parse_maybe_expr().as_type()
+
+    def parse_precedence_1(self) -> ASTMaybeExpr:
         if self.match(TokenType.IF):
             return self.parse_if()
         elif self.match(TokenType.LEFT_BRACE):
@@ -448,12 +454,13 @@ class ParseState:
         self.expect(TokenType.RIGHT_BRACE)
         return ASTBlockExpr(stmts, return_unit, self.pop_loc())
 
-    def parse_precedence_2(self) -> ASTExpr:
+    def parse_precedence_2(self) -> ASTMaybeExpr:
         left = self.parse_precedence_3()
         if self.match(TokenType.EQUAL, TokenType.PLUS_EQUAL, TokenType.MINUS_EQUAL, TokenType.STAR_EQUAL, TokenType.SLASH_EQUAL, TokenType.PERCENT_EQUAL):
+            left_expr = left.as_expr()
             self.push_loc()
             assign_type = self.advance()
-            right = self.parse_precedence_2()
+            right = self.parse_precedence_2().as_expr()
             match assign_type.type:
                 case TokenType.EQUAL:
                     op = "none"
@@ -469,7 +476,7 @@ class ParseState:
                     op = "Mod"
                 case _:
                     raise ValueError()
-            if isinstance(left, ASTIdentExpr):
+            if isinstance(left, ASTNameExpr):
                 return ASTAssign(left, op, right, self.pop_loc().combine(left.loc))
             elif isinstance(left, ASTAttrExpr):
                 return ASTAttrAssign(left.object, left.attr, op, right, self.pop_loc().combine(left.loc))
@@ -478,96 +485,108 @@ class ParseState:
         else:
             return left
 
-    def parse_precedence_3(self) -> ASTExpr:
+    def parse_precedence_3(self) -> ASTMaybeExpr:
         left = self.parse_precedence_4()
         while self.match(TokenType.OR):
+            left_expr = left.as_expr()
             self.push_loc()
             self.expect(TokenType.OR)
-            right = self.parse_precedence_4()
-            left = ASTOrExpr(left, right, self.pop_loc().combine(left.loc))
+            right = self.parse_precedence_4().as_expr()
+            left = ASTOrExpr(left_expr, right, self.pop_loc().combine(left.loc))
         return left
 
-    def parse_precedence_4(self) -> ASTExpr:
+    def parse_precedence_4(self) -> ASTMaybeExpr:
         left = self.parse_comparison()
         while self.match(TokenType.AND):
+            left_expr = left.as_expr()
             self.push_loc()
             self.expect(TokenType.AND)
-            right = self.parse_comparison()
-            left = ASTAndExpr(left, right, self.pop_loc().combine(left.loc))
+            right = self.parse_comparison().as_expr()
+            left = ASTAndExpr(left_expr, right, self.pop_loc().combine(left.loc))
         return left
 
-    def parse_comparison(self) -> ASTExpr:
+    def parse_comparison(self) -> ASTMaybeExpr:
         left = self.parse_precedence_5()
         while True:
             if self.match(TokenType.LESS):
+                left_expr = left.as_expr()
                 self.push_loc()
                 self.expect(TokenType.LESS)
-                right = self.parse_precedence_5()
-                left = ASTLessExpr(left, right, self.pop_loc().combine(left.loc))
+                right = self.parse_precedence_5().as_expr()
+                left = ASTLessExpr(left_expr, right, self.pop_loc().combine(left.loc))
             elif self.match(TokenType.LESS_EQUAL):
+                left_expr = left.as_expr()
                 self.push_loc()
                 self.expect(TokenType.LESS_EQUAL)
-                right = self.parse_precedence_5()
-                left = ASTLessEqualExpr(left, right, self.pop_loc().combine(left.loc))
+                right = self.parse_precedence_5().as_expr()
+                left = ASTLessEqualExpr(left_expr, right, self.pop_loc().combine(left.loc))
             elif self.match(TokenType.GREATER):
+                left_expr = left.as_expr()
                 self.push_loc()
                 self.expect(TokenType.GREATER)
-                right = self.parse_precedence_5()
-                left = ASTGreaterExpr(left, right, self.pop_loc().combine(left.loc))
+                right = self.parse_precedence_5().as_expr()
+                left = ASTGreaterExpr(left_expr, right, self.pop_loc().combine(left.loc))
             elif self.match(TokenType.EQUAL_EQUAL):
+                left_expr = left.as_expr()
                 self.push_loc()
                 self.expect(TokenType.EQUAL_EQUAL)
-                right = self.parse_precedence_5()
-                left = ASTEqualExpr(left, right, self.pop_loc().combine(left.loc))
+                right = self.parse_precedence_5().as_expr()
+                left = ASTEqualExpr(left_expr, right, self.pop_loc().combine(left.loc))
             elif self.match(TokenType.NOT_EQUAL):
+                left_expr = left.as_expr()
                 self.push_loc()
                 self.expect(TokenType.NOT_EQUAL)
-                right = self.parse_precedence_5()
-                left = ASTNotEqualExpr(left, right, self.pop_loc().combine(left.loc))
+                right = self.parse_precedence_5().as_expr()
+                left = ASTNotEqualExpr(left_expr, right, self.pop_loc().combine(left.loc))
             else:
                 break
         return left
 
-    def parse_precedence_5(self) -> ASTExpr:
+    def parse_precedence_5(self) -> ASTMaybeExpr:
         left = self.parse_precedence_6()
         while True:
             if self.match(TokenType.PLUS):
+                left_expr = left.as_expr()
                 self.push_loc()
                 self.expect(TokenType.PLUS)
-                right = self.parse_precedence_6()
-                left = ASTAddExpr(left, right, self.pop_loc().combine(left.loc))
+                right = self.parse_precedence_6().as_expr()
+                left = ASTAddExpr(left_expr, right, self.pop_loc().combine(left.loc))
             elif self.match(TokenType.MINUS):
+                left_expr = left.as_expr()
                 self.push_loc()
                 self.expect(TokenType.MINUS)
-                right = self.parse_precedence_6()
-                left = ASTSubExpr(left, right, self.pop_loc().combine(left.loc))
+                right = self.parse_precedence_6().as_expr()
+                left = ASTSubExpr(left_expr, right, self.pop_loc().combine(left.loc))
             else:
                 break
         return left
 
-    def parse_precedence_6(self) -> ASTExpr:
+    def parse_precedence_6(self) -> ASTMaybeExpr:
         left = self.parse_precedence_7()
         while True:
             if self.match(TokenType.STAR):
+                left_expr = left.as_expr()
                 self.push_loc()
                 self.expect(TokenType.STAR)
-                right = self.parse_precedence_7()
-                left = ASTMulExpr(left, right, self.pop_loc().combine(left.loc))
+                right = self.parse_precedence_7().as_expr()
+                left = ASTMulExpr(left_expr, right, self.pop_loc().combine(left.loc))
             elif self.match(TokenType.SLASH):
+                left_expr = left.as_expr()
                 self.push_loc()
                 self.expect(TokenType.SLASH)
-                right = self.parse_precedence_7()
-                left = ASTDivExpr(left, right, self.pop_loc().combine(left.loc))
+                right = self.parse_precedence_7().as_expr()
+                left = ASTDivExpr(left_expr, right, self.pop_loc().combine(left.loc))
             elif self.match(TokenType.PERCENT):
+                left_expr = left.as_expr()
                 self.push_loc()
                 self.expect(TokenType.PERCENT)
-                right = self.parse_precedence_7()
-                left = ASTModExpr(left, right, self.pop_loc().combine(left.loc))
+                right = self.parse_precedence_7().as_expr()
+                left = ASTModExpr(left_expr, right, self.pop_loc().combine(left.loc))
             else:
                 break
         return left
 
-    def parse_precedence_7(self) -> ASTExpr:
+    def parse_precedence_7(self) -> ASTMaybeExpr:
         # self.push_loc()
         # left = self.parse_precedence_8()
         # if self.match(TokenType.STAR_STAR):
@@ -579,24 +598,25 @@ class ParseState:
         #     return left
         return self.parse_precedence_8()
 
-    def parse_precedence_8(self) -> ASTExpr:
+    def parse_precedence_8(self) -> ASTMaybeExpr:
         self.push_loc()
         if self.match(TokenType.MINUS):
             token = self.expect(TokenType.MINUS)
-            right = self.parse_precedence_8()
+            right = self.parse_precedence_8().as_expr()
             return ASTNegExpr(token, right, self.pop_loc())
         elif self.match(TokenType.NOT):
             token = self.expect(TokenType.NOT)
-            right = self.parse_precedence_8()
+            right = self.parse_precedence_8().as_expr()
             return ASTNotExpr(token, right, self.pop_loc())
         else:
             self.pop_loc()
             return self.parse_precedence_9()
 
-    def parse_precedence_9(self) -> ASTExpr:
-        left = self.parse_precedence_10()
+    def parse_precedence_9(self) -> ASTMaybeExpr:
+        left: ASTMaybeExpr = self.parse_precedence_10()
         while True:
             if self.match(TokenType.LEFT_PAREN):
+                left_expr = left.as_expr()
                 self.push_loc()
                 arguments: list[ASTExpr] = []
                 self.expect(TokenType.LEFT_PAREN)
@@ -608,36 +628,70 @@ class ParseState:
                     else:
                         break
                 self.expect(TokenType.RIGHT_PAREN)
-                left = ASTCallExpr(left, arguments, self.pop_loc().combine(left.loc))
+                left = ASTCallExpr(left_expr, arguments, self.pop_loc().combine(left.loc))
             elif self.match(TokenType.LEFT_BRACKET):
                 self.push_loc()
-                arguments: list[ASTType] = []
+                arguments: list[ASTMaybeExpr] = []
                 self.expect(TokenType.LEFT_BRACKET)
                 while not self.match(TokenType.RIGHT_BRACKET):
-                    argument = self.parse_type()
+                    argument = self.parse_maybe_expr()
                     arguments.append(argument)
                     if self.match(TokenType.COMMA):
                         self.expect(TokenType.COMMA)
                     else:
                         break
                 end = self.expect(TokenType.RIGHT_BRACKET)
-                left = ASTGenericExpr(left, arguments, self.pop_loc().combine(left.loc))
+                left = ASTMaybeGeneric(left, arguments, self.pop_loc().combine(left.loc))
+            elif self.match(TokenType.COLON_COLON):
+                if isinstance(left, ASTMaybeGeneric):
+                    left_type = left.as_type()
+                    self.push_loc()
+                    self.expect(TokenType.COLON_COLON)
+                    name = self.expect(TokenType.IDENT).text
+                    left = ASTGenericAttrExpr(left_type, name, self.pop_loc())
+                else:
+                    left_ns = left.as_namespace()
+                    self.push_loc()
+                    self.expect(TokenType.COLON_COLON)
+                    name = self.expect(TokenType.IDENT).text
+                    left = ASTMaybeName(name, left_ns, self.pop_loc().combine(left_ns.loc))
             elif self.match(TokenType.DOT):
+                left_expr = left.as_expr()
                 self.push_loc()
                 self.expect(TokenType.DOT)
                 attr = self.expect(TokenType.IDENT)
-                left = ASTAttrExpr(left, attr, self.pop_loc().combine(left.loc))
+                left = ASTAttrExpr(left.as_expr(), attr, self.pop_loc().combine(left.loc))
             else:
                 break
         return left
 
-    def parse_precedence_10(self) -> ASTExpr:
+    def parse_precedence_10(self) -> ASTMaybeExpr:
         if self.match(TokenType.LEFT_PAREN):
             self.push_loc()
+            items: list[ASTMaybeExpr] = []
+            had_comma = False
             self.expect(TokenType.LEFT_PAREN)
-            expr = self.parse_expr()
+            while not self.match(TokenType.RIGHT_PAREN):
+                item = self.parse_maybe_expr()
+                items.append(item)
+                if self.match(TokenType.COMMA):
+                    self.expect(TokenType.COMMA)
+                    had_comma = True
+                else:
+                    break
             self.expect(TokenType.RIGHT_PAREN)
-            return ASTGroupExpr(expr, self.pop_loc())
+
+            if self.match(TokenType.ARROW):
+                parameters: list[ASTType] = [item.as_type() for item in items]
+                self.expect(TokenType.ARROW)
+                ret_type = self.parse_type()
+                return ASTFunctionType(parameters, ret_type, self.pop_loc())
+            elif len(items) == 0:
+                return ASTMaybeUnit(self.pop_loc())
+            elif len(items) == 1 and not had_comma:
+                return items[0]
+            else:
+                self.expect(TokenType.ARROW)
         elif self.match(TokenType.BAR):
             self.push_loc()
             parameters: list[ASTParameter] = []
@@ -666,55 +720,6 @@ class ParseState:
         elif self.match(TokenType.BINARY) or self.match(TokenType.HEX) or self.match(TokenType.INTEGER):
             number = self.advance()
             return ASTIntegerExpr(number)
-        elif self.match(TokenType.STRING):
-            return ASTStringExpr(self.expect(TokenType.STRING))
         else:
-            return ASTIdentExpr(self.expect(TokenType.IDENT))
-
-    def parse_type(self) -> ASTType:
-        return self.parse_type_precedence_1()
-
-    def parse_type_precedence_1(self) -> ASTType:
-        type = self.parse_type_precedence_2()
-        while self.match(TokenType.LEFT_BRACKET):
-            arguments: list[ASTType] = []
-            self.push_loc()
-            self.expect(TokenType.LEFT_BRACKET)
-            while not self.match(TokenType.RIGHT_BRACKET):
-                argument = self.parse_type()
-                arguments.append(argument)
-                if self.match(TokenType.COMMA):
-                    self.expect(TokenType.COMMA)
-                else:
-                    break
-            end = self.expect(TokenType.RIGHT_BRACKET)
-            type = ASTTypeGeneric(type, arguments, self.pop_loc().combine(type.loc))
-        return type
-
-    def parse_type_precedence_2(self) -> ASTType:
-        if self.match(TokenType.IDENT):
-            self.push_loc()
-            name = self.expect(TokenType.IDENT)
-            return ASTTypeIdent(name.text, self.pop_loc())
-        elif self.match(TokenType.LEFT_PAREN):
-            self.push_loc()
-            parameters: list[ASTType] = []
-            self.expect(TokenType.LEFT_PAREN)
-            while not self.match(TokenType.RIGHT_PAREN):
-                parameter = self.parse_type()
-                parameters.append(parameter)
-                if self.match(TokenType.COMMA):
-                    self.expect(TokenType.COMMA)
-                else:
-                    break
-            self.expect(TokenType.RIGHT_PAREN)
-
-            if self.match(TokenType.ARROW):
-                self.expect(TokenType.ARROW)
-                ret_type = self.parse_type()
-                return ASTTypeFunction(parameters, ret_type, self.pop_loc())
-            elif len(parameters) == 0:
-                return ASTTypeUnit(self.pop_loc())
-            else:
-                self.expect(TokenType.ARROW)
-                self.error()
+            tok = self.expect(TokenType.IDENT)
+            return ASTMaybeName(tok.text, None, tok.location)
