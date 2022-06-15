@@ -430,6 +430,10 @@ class LLVMGen:
                 return self.generate_generic_expr(expr.as_generic)
         elif isinstance(expr, IRGenericAttrExpr):
             val = self.generate_generic_attr_expr(expr)
+        elif isinstance(expr, IRIndexExpr):
+            val = self.generate_index_expr(expr)
+        elif isinstance(expr, IRMethodCallExpr):
+            val = self.generate_method_call_expr(expr)
         else:
             raise ValueError(type(expr))
         if expr.cast:
@@ -485,6 +489,9 @@ class LLVMGen:
         element_pointer = self.builder.gep(object, (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), expr.index),))
         return self.builder.load(element_pointer)
 
+    def generate_index_expr(self, expr: IRIndexExpr) -> ir.Value:
+        return self.generate_expr(expr.replacement_expr)
+
     def generate_method_call_expr(self, expr: IRMethodCallExpr) -> ir.Value:
         if expr.method.is_static:
             obj = self.generate_expr(expr.obj)
@@ -526,9 +533,6 @@ class LLVMGen:
 
     def generate_generic_expr(self, expr: IRGenericExpr) -> ir.Value:
         return self.generate_expr(expr.replacement_expr)
-
-    def generate_index_expr(self, expr: IRIndexExpr) -> ir.Value:
-        raise ValueError()
 
     def generate_binary_expr(self, expr: IRBinaryExpr) -> ir.Value:
         match expr.op:

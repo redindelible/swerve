@@ -671,7 +671,20 @@ class BidirectionalTypeInference:
         return IRValue(expr.yield_type, expr.resolved)
 
     def unify_index_expr(self, expr: IRIndexExpr, bound: IRResolvedType | None, bound_loc: Location | None) -> IRValue:
-        raise ValueError()
+        resolved_obj, _ = self.unify_expr(expr.obj, None, None)
+        if isinstance(resolved_obj, IRTraitType):
+            index_trait = cast(IRTraitType, self.program.ops["Index"].type)
+            if resolved_obj.trait in index_trait.trait.reifications.values():
+                method = resolved_obj.trait.methods[resolved_obj.trait.has_method("get")]
+                param = method.function.parameters[1]
+                yield_type, _ = self.unify_expr(expr.argument, cast(IRResolvedType, param.type), expr.loc)
+                expr.replacement_expr = IRMethodCallExpr(expr.obj, index_trait, method, [expr.argument])
+                expr.yield_type = expr.replacement_expr.yield_type = yield_type
+                return IRValue(expr.yield_type, None)
+            else:
+                raise CompilerMessage(ErrorType.COMPILATION, f"Object of type {resolved_obj.trait.name} does not implement trait 'Index'", expr.loc)
+        else:
+            raise ValueError()
 
     def unify_generic_or_index_expr(self, expr: IRGenericOrIndexExpr, bound: IRResolvedType | None, bound_loc: Location | None) -> IRValue:
         resolved_name, value = self.unify_expr(expr.obj, None, None)

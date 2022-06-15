@@ -693,6 +693,8 @@ class IRIndexExpr(IRExpr):
     obj: IRExpr
     argument: IRExpr
 
+    replacement_expr: IRExpr | None = field(init=False, default=None)
+
 
 @dataclass()
 class IRGenericExpr(IRExpr):

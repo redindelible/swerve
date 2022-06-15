@@ -54,5 +54,5 @@ fn main() -> int {
 
     let indexable: ops::Index[int] = li;
 
-    return indexable.get(2);
+    return indexable[2];
 }

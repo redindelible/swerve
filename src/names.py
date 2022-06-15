@@ -446,6 +446,8 @@ class ResolveNames:
                 return IRGenericOrIndexExpr(obj, arg_as_type, arg_as_expr).set_loc(expr.loc)
         elif isinstance(expr, ASTGenericAttrExpr):
             return IRGenericAttrExpr(self.resolve_type(expr.generic), expr.name).set_loc(expr.loc)
+        elif isinstance(expr, ASTIndexExpr):
+            return IRIndexExpr(self.resolve_expr(expr.obj), self.resolve_expr(expr.index)).set_loc(expr.loc)
         else:
             raise ValueError(expr.__class__)
 
