@@ -8,12 +8,13 @@ from .common import Location, BuiltinLocation, NamedTuple, UniqueList, CompilerM
 
 
 __all__ = ['IRNode', 'IRValue', 'IRTypeVarType', 'IRType', 'IRBlock', 'IRValueDecl', 'IRIntegerType', "IRFunctionType",
-           'IRParameter', 'IRFunction', 'IRTypeDecl', 'IRNameExpr', "IRResolvedType", 'IRTypeVariable', 'IRResolvedName',
+           'IRParameter', 'IRFunction', 'IRTypeDecl', 'IRNameExpr', "IRResolvedType", 'IRTypeVariable', 'IRIndexExpr',
            'IRUnresolvedUnknownType', 'IRExpr', 'IRStruct', 'IRStructType', 'IRUnresolvedGenericType', 'IRMethod',
            'IRUnitType', 'IRUnresolvedNameType', 'IRProgram', 'IRMethodCallExpr', 'IRField', 'IRAttrExpr', 'IRExprStmt',
            'IRWhileStmt', 'IRDeclStmt', 'IRUnresolvedFunctionType', 'IRNotExpr', 'IRNegExpr', 'IRLambda', 'IRAttrAssign',
            'IRAssign', 'IRIf', 'IRBoolType', 'IRIntegerExpr', 'IRGenericExpr', 'IRReturnStmt', 'IRCallExpr', 'IRBinaryExpr',
-           'IRStmt', 'IRUnresolvedType', 'ArrayVariant', 'IRTrait', 'IRTraitType', "Namespace", "IRName",]
+           'IRStmt', 'IRUnresolvedType', 'ArrayVariant', 'IRTrait', 'IRTraitType', "Namespace", "IRGenericOrIndexExpr",
+           'IRGenericAttrExpr']
 
 
 def check_name(name: str) -> bool:
@@ -588,21 +589,6 @@ class IRReturnStmt(IRStmt):
 
 
 @dataclass()
-class IRName(IRNode):
-    pass
-
-
-@dataclass()
-class IRResolvedName(IRName):
-    ns: Namespace
-
-
-@dataclass()
-class IRGenericName(IRName):
-    ns: Namespace
-
-
-@dataclass()
 class IRExpr(IRNode):
     yield_type: IRResolvedType | None = field(init=False, default=None)
     cast: IRResolvedType | None = field(init=False, default=None)
@@ -699,11 +685,35 @@ class IRMethodCallExpr(IRExpr):
 
 
 @dataclass()
+class IRIndexExpr(IRExpr):
+    obj: IRExpr
+    argument: IRExpr
+
+
+@dataclass()
 class IRGenericExpr(IRExpr):
     generic: IRNameExpr
     arguments: list[IRType]
 
     replacement_expr: IRExpr | None = field(init=False, default=None)
+
+
+@dataclass()
+class IRGenericOrIndexExpr(IRExpr):
+    obj: IRNameExpr
+    argument_as_type: IRType
+    argument_as_expr: IRExpr
+
+    as_generic: IRGenericExpr | None = field(init=False, default=None)
+    as_index: IRIndexExpr | None = field(init=False, default=None)
+
+
+@dataclass()
+class IRGenericAttrExpr(IRExpr):
+    generic: IRType
+    name: str
+
+    resolved: IRValueDecl | None = field(init=False, default=None)
 
 
 @dataclass()

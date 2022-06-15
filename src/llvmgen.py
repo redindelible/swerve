@@ -444,6 +444,13 @@ class LLVMGen:
             val = self.generate_attr_assign(expr)
         elif isinstance(expr, IRLambda):
             val = self.generate_lambda(expr)
+        elif isinstance(expr, IRGenericOrIndexExpr):
+            if expr.as_index:
+                return self.generate_index_expr(expr.as_index)
+            else:
+                return self.generate_generic_expr(expr.as_generic)
+        elif isinstance(expr, IRGenericAttrExpr):
+            val = self.generate_generic_attr_expr(expr)
         else:
             raise ValueError(type(expr))
         if expr.cast:
@@ -482,6 +489,9 @@ class LLVMGen:
                 return self.builder.load(name)
         else:
             raise ValueError(name, expr.name)
+
+    def generate_generic_attr_expr(self, expr: IRGenericAttrExpr) -> ir.Value:
+        return self.decl_values[expr.resolved]
 
     def generate_call_expr(self, expr: IRCallExpr) -> ir.Value:
         if expr.as_method_call is not None:
@@ -537,6 +547,9 @@ class LLVMGen:
 
     def generate_generic_expr(self, expr: IRGenericExpr) -> ir.Value:
         return self.generate_expr(expr.replacement_expr)
+
+    def generate_index_expr(self, expr: IRIndexExpr) -> ir.Value:
+        raise ValueError()
 
     def generate_binary_expr(self, expr: IRBinaryExpr) -> ir.Value:
         match expr.op:

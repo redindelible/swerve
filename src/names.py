@@ -422,8 +422,29 @@ class ResolveNames:
                 exterior_name.put_in_closure = True
 
             return IRLambda(exterior_names, params, ret_type, IRBlock([IRExprStmt(expr_expr).set_loc(expr.expr.loc)], list(expr_ns.value_names.values()), False).set_loc(expr.expr.loc)).set_loc(expr.loc)
+        elif isinstance(expr, ASTIndexOrGenericExpr):
+            obj = cast(IRNameExpr, self.resolve_expr(expr.obj))
+            try:
+                arg_as_type = self.resolve_type(expr.index_or_arg.as_type())
+            except CompilerMessage:
+                arg_as_type = None
+            try:
+                arg_as_expr = self.resolve_expr(expr.index_or_arg.as_expr())
+            except CompilerMessage:
+                if arg_as_type is None:
+                    raise
+                else:
+                    arg_as_expr = None
+            if arg_as_type is None:
+                return IRIndexExpr(obj, arg_as_expr).set_loc(expr.loc)
+            elif arg_as_expr is None:
+                return IRGenericExpr(obj, [arg_as_type]).set_loc(expr.loc)
+            else:
+                return IRGenericOrIndexExpr(obj, arg_as_type, arg_as_expr).set_loc(expr.loc)
+        elif isinstance(expr, ASTGenericAttrExpr):
+            return IRGenericAttrExpr(self.resolve_type(expr.generic), expr.name).set_loc(expr.loc)
         else:
-            raise ValueError()
+            raise ValueError(expr.__class__)
 
     def resolve_body(self, body: ASTBlockExpr, ns: Namespace = None) -> IRBlock:
         if ns is None:
