@@ -52,7 +52,5 @@ fn main() -> int {
     li.append(2);
     li.append(3);
 
-    let indexable: ops::Index[int] = li;
-
-    return indexable[2];
+    return li[2];
 }

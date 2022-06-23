@@ -672,8 +672,8 @@ class BidirectionalTypeInference:
 
     def unify_index_expr(self, expr: IRIndexExpr, bound: IRResolvedType | None, bound_loc: Location | None) -> IRValue:
         resolved_obj, _ = self.unify_expr(expr.obj, None, None)
+        index_trait = cast(IRTraitType, self.program.ops["Index"].type)
         if isinstance(resolved_obj, IRTraitType):
-            index_trait = cast(IRTraitType, self.program.ops["Index"].type)
             if resolved_obj.trait in index_trait.trait.reifications.values():
                 method = resolved_obj.trait.methods[resolved_obj.trait.has_method("get")]
                 param = method.function.parameters[1]
@@ -683,6 +683,21 @@ class BidirectionalTypeInference:
                 return IRValue(expr.yield_type, None)
             else:
                 raise CompilerMessage(ErrorType.COMPILATION, f"Object of type {resolved_obj.trait.name} does not implement trait 'Index'", expr.loc)
+        if isinstance(resolved_obj, IRStructType):
+            for supertrait in cast(list[IRTraitType], resolved_obj.struct.supertraits):
+                if supertrait.trait in index_trait.trait.reifications.values():
+                    expr.obj.cast = supertrait
+
+                    method = supertrait.trait.methods[supertrait.trait.has_method("get")]
+                    param = method.function.parameters[1]
+                    yield_type, _ = self.unify_expr(expr.argument, cast(IRResolvedType, param.type), expr.loc)
+                    expr.replacement_expr = IRMethodCallExpr(expr.obj, index_trait, method, [expr.argument])
+                    expr.yield_type = expr.replacement_expr.yield_type = yield_type
+                    return IRValue(expr.yield_type, None)
+                else:
+                    raise CompilerMessage(ErrorType.COMPILATION, f"Object of type {supertrait.trait.name} does not implement trait 'Index'", expr.loc)
+            else:
+                raise CompilerMessage(ErrorType.COMPILATION, f"Object of type {resolved_obj.struct.name} does not implement trait 'Index'", expr.loc)
         else:
             raise ValueError()
 
