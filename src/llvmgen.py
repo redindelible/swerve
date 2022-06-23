@@ -38,6 +38,35 @@ class Closure:
         self.from_block = from_block
 
 
+class StructType:
+    def __init__(self, name: str, llvm_type: ir.IdentifiedStructType):
+        self._name = name
+        self._llvm_type = llvm_type
+
+        self._elems: list[ir.Type] = []
+        self._elem_pos: dict[str, int] = {}
+
+    def add_field(self, name: str, type: ir.Type):
+        self._elem_pos[name] = len(self._elems)
+        self._elems.append(type)
+        self._llvm_type.elements = tuple(self._elems)
+
+    def index_of(self, name: str) -> int:
+        return self._elem_pos[name]
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def p_type(self) -> ir.PointerType:
+        return self._llvm_type.as_pointer()
+
+    @property
+    def type(self) -> ir.IdentifiedStructType:
+        return self._llvm_type
+
+
 class LLVMGen:
     def __init__(self, program: IRProgram):
         self.program = program
@@ -64,7 +93,7 @@ class LLVMGen:
         self.current_block: IRBlock | None = None
         self.function_ir: dict[IRFunction, ir.Function] = {}
         self.decl_values: dict[IRValueDecl, ir.Value] = {}
-        self.struct_types: dict[IRStructType, ir.PointerType] = {}
+        self.struct_types: dict[IRStructType, StructType] = {}
 
         self.trait_vtable_types: dict[IRTraitType, ir.LiteralStructType] = {}
         self.trait_types: dict[IRTraitType, ir.LiteralStructType] = {}
@@ -122,8 +151,7 @@ class LLVMGen:
         for struct in self.program.structs:
             if len(struct.get_type_vars()) == 0:
                 struct_type = self.module.context.get_identified_type(self.new_name(struct.name))
-                # noinspection PyTypeChecker
-                self.struct_types[struct.type_decl.type] = ir.PointerType(struct_type)
+                self.struct_types[cast(IRStructType, struct.type_decl.type)] = StructType(struct_type.name, struct_type)
 
                 for trait in struct.supertraits:
                     trait = cast(IRTraitType, trait)
@@ -135,16 +163,15 @@ class LLVMGen:
         for type, array_variant in self.program.array_variants.items():
             if type.is_concrete():
                 struct_type = self.module.context.get_identified_type(self.new_name(array_variant.array.name))
-                self.struct_types[cast(IRStructType, array_variant.array.type_decl.type)] = ir.PointerType(struct_type)
+                self.struct_types[cast(IRStructType, array_variant.array.type_decl.type)] = StructType(struct_type.name, struct_type)
 
         for struct in self.program.structs:
             if len(struct.get_type_vars()) == 0:
-                # noinspection PyTypeChecker
-                struct_p_type: ir.PointerType = self.struct_types[struct.type_decl.type]
-                struct_type: ir.IdentifiedStructType = struct_p_type.pointee
-                struct_type.set_body(*(self.generate_type(field.type) for field in struct.fields))
+                struct_type = self.struct_types[cast(IRStructType, struct.type_decl.type)]
+                for field in struct.fields:
+                    struct_type.add_field(field.name, self.generate_type(field.type))
 
-                self.generate_constructor(struct, struct_p_type)
+                self.generate_constructor(struct, struct_type)
 
         for type, array_variant in self.program.array_variants.items():
             if type.is_concrete():
@@ -165,17 +192,16 @@ class LLVMGen:
                     vtable.initializer = ir.Constant(vtable_type, functions)
 
     def generate_array_variant(self, variant: ArrayVariant):
-        # noinspection PyTypeChecker
-        struct_p_type: ir.PointerType = self.struct_types[variant.array.type_decl.type]
-        struct_type: ir.IdentifiedStructType = struct_p_type.pointee
-        struct_type.set_body(self.generate_type(variant.type).as_pointer(), ir.IntType(64))
+        struct_type = self.struct_types[cast(IRStructType, variant.array.type_decl.type)]
+        struct_type.add_field("_mem", self.generate_type(variant.type).as_pointer())
+        struct_type.add_field("_len", ir.IntType(64))
 
-        self.generate_array_constructor(variant, struct_type)
+        self.generate_array_constructor(variant, struct_type, self.generate_type(variant.type))
 
         self.generate_array_get(variant, struct_type)
         self.generate_array_set(variant, struct_type)
 
-    def generate_array_set(self, variant: ArrayVariant, struct_type: ir.IdentifiedStructType):
+    def generate_array_set(self, variant: ArrayVariant, struct_type: StructType):
         set_value_type = self.generate_type(variant.set.type)
         # noinspection PyUnresolvedReferences
         set_type: ir.FunctionType = set_value_type.pointee.elements[0].pointee
@@ -206,7 +232,7 @@ class LLVMGen:
             self.builder.call(self.external_functions["exit"], [i64(-1)])
             self.builder.unreachable()
 
-    def generate_array_get(self, variant: ArrayVariant, struct_type: ir.IdentifiedStructType):
+    def generate_array_get(self, variant: ArrayVariant, struct_type: StructType):
         get_value_type = self.generate_type(variant.get.type)
         # noinspection PyUnresolvedReferences
         get_type: ir.FunctionType = get_value_type.pointee.elements[0].pointee
@@ -235,9 +261,8 @@ class LLVMGen:
             self.builder.call(self.external_functions["exit"], [i64(-1)])
             self.builder.unreachable()
 
-    def generate_array_constructor(self, variant: ArrayVariant, struct_type: ir.IdentifiedStructType):
+    def generate_array_constructor(self, variant: ArrayVariant, struct_type: StructType, value_type: ir.Type):
         constructor_value_type = self.generate_type(variant.constructor.type)
-        value_type: ir.Type = struct_type.elements[0].pointee
         # noinspection PyUnresolvedReferences
         constructor_type: ir.FunctionType = constructor_value_type.pointee.elements[0].pointee
         constructor = ir.Function(self.module, constructor_type, self.new_name(f"{struct_type.name}_constructor"))
@@ -249,8 +274,8 @@ class LLVMGen:
         self.decl_values[variant.constructor] = constructor_value
 
         self.builder = ir.IRBuilder(constructor.append_basic_block("entry"))
-        mem = self.builder.call(self.external_functions["malloc"], [ir.Constant(ir.IntType(64), self.size_of(struct_type))])
-        obj = self.builder.bitcast(mem, struct_type.as_pointer())
+        mem = self.builder.call(self.external_functions["malloc"], [ir.Constant(ir.IntType(64), self.size_of(struct_type.type))])
+        obj = self.builder.bitcast(mem, struct_type.p_type)
 
         closure, size = constructor.args
 
@@ -260,8 +285,8 @@ class LLVMGen:
         self.builder.store(size, self.gep(obj, [0, 1]))
         self.builder.ret(obj)
 
-    def generate_constructor(self, struct: IRStruct, struct_type: ir.PointerType):
-        constructor_type = ir.FunctionType(struct_type, [self.void_p_type] + [self.generate_type(field.type) for field in struct.fields])
+    def generate_constructor(self, struct: IRStruct, struct_type: StructType):
+        constructor_type = ir.FunctionType(struct_type.p_type, [self.void_p_type] + [self.generate_type(field.type) for field in struct.fields])
         constructor = ir.Function(self.module, constructor_type, self.new_name(f"{struct.name}_constructor"))
 
         func_value = ir.GlobalVariable(self.module, cast(ir.PointerType, self.generate_type(struct.constructor.type)).pointee, f"obj_{constructor.name}")
@@ -272,8 +297,8 @@ class LLVMGen:
 
         self.builder = ir.IRBuilder(constructor.append_basic_block("entry"))
 
-        mem = self.builder.call(self.external_functions["malloc"], [ir.Constant(ir.IntType(64), self.size_of(struct_type.pointee))])
-        obj = self.builder.bitcast(mem, struct_type)
+        mem = self.builder.call(self.external_functions["malloc"], [ir.Constant(ir.IntType(64), self.size_of(struct_type.type))])
+        obj = self.builder.bitcast(mem, struct_type.p_type)
 
         for index, arg in enumerate(constructor.args[1:]):
             field_ptr = self.builder.gep(obj, [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), index)])
@@ -486,7 +511,8 @@ class LLVMGen:
 
     def generate_attr_expr(self, expr: IRAttrExpr) -> ir.Value:
         object = self.generate_expr(expr.object)
-        element_pointer = self.builder.gep(object, (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), expr.index),))
+        index = self.struct_types[expr.struct].index_of(expr.attr)
+        element_pointer = self.builder.gep(object, (i32(0), i32(index)))
         return self.builder.load(element_pointer)
 
     def generate_index_expr(self, expr: IRIndexExpr) -> ir.Value:
@@ -596,7 +622,7 @@ class LLVMGen:
                 count += 1
         if len(closed) > 0:
             closure_type = ir.LiteralStructType([self.void_p_type] + [self.generate_type(var.type) for var in closed])
-            closure = self.builder.call(self.external_functions["malloc"], [ir.Constant(self.integer_types[64], self.size_of(closure_type))])
+            closure = self.builder.call(self.external_functions["malloc"], [i64(self.size_of(closure_type))])
             closure = self.builder.bitcast(closure, ir.PointerType(closure_type))
             self.builder.store(self.recent_closure, self.gep(closure, [0, 0]))
             self.recent_closure.append(closure)
@@ -621,7 +647,8 @@ class LLVMGen:
 
     def generate_attr_assign(self, expr: IRAttrAssign) -> ir.Value:
         object = self.generate_expr(expr.obj)
-        element_pointer = self.builder.gep(object, (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), expr.index),))
+        index = self.struct_types[expr.struct].index_of(expr.attr)
+        element_pointer = self.builder.gep(object, (i32(0), i32(index)))
         value = self.generate_expr(expr.value)
         match expr.op:
             case "none":
@@ -750,7 +777,7 @@ class LLVMGen:
             else:
                 return self.integer_types.setdefault(type.bits, ir.IntType(type.bits))
         elif isinstance(type, IRStructType):
-            return self.struct_types[type]
+            return self.struct_types[type].p_type
         elif isinstance(type, IRTraitType):
             return self.trait_types[type]
         elif isinstance(type, IRUnitType):

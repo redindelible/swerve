@@ -644,7 +644,7 @@ class IRAttrAssign(IRExpr):
     attr: str
     op: str
     value: IRExpr
-    index: int | None = None
+    struct: IRStructType | None = None
 
 
 @dataclass()
@@ -727,7 +727,7 @@ class IRAttrExpr(IRExpr):
     object: IRExpr
     attr: str
 
-    index: int | None = field(init=False, default=None)
+    struct: IRStructType | None = None
 
 
 @dataclass()

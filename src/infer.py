@@ -752,8 +752,9 @@ class BidirectionalTypeInference:
         resolved_object, _ = self.unify_expr(expr.object, None, None)
         if not isinstance(resolved_object, IRStructType):
             raise CompilerMessage(ErrorType.COMPILATION, f"Object must be a struct, is instead a {resolved_object}:", expr.loc)
+        expr.struct = resolved_object
         try:
-            expr.index, field = next((index, field) for index, field in enumerate(resolved_object.struct.fields) if field.name == expr.attr)
+            field = next(field for field in resolved_object.struct.fields if field.name == expr.attr)
         except StopIteration:
             raise CompilerMessage(ErrorType.COMPILATION, f"Object of type {resolved_object.struct.name} does not have a field named {expr.attr}:", expr.loc, [
                                       CompilerMessage(ErrorType.NOTE, f"{resolved_object.struct.name} defined here:", resolved_object.struct.loc)
@@ -868,8 +869,9 @@ class BidirectionalTypeInference:
         resolved_object, _ = self.unify_expr(expr.obj, None, None)
         if not isinstance(resolved_object, IRStructType):
             raise CompilerMessage(ErrorType.COMPILATION, f"Object must be a struct, is instead a {resolved_object}:", expr.loc)
+        expr.struct = resolved_object
         try:
-            expr.index, field = next((index, field) for index, field in enumerate(resolved_object.struct.fields) if field.name == expr.attr)
+            field = next(field for field in resolved_object.struct.fields if field.name == expr.attr)
         except StopIteration:
             raise CompilerMessage(ErrorType.COMPILATION, f"Object of type {resolved_object.struct.name} does not have a field named {expr.attr}:", expr.loc, [
                                       CompilerMessage(ErrorType.NOTE, f"{resolved_object.struct.name} defined here:", resolved_object.struct.loc)
