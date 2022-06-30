@@ -17,7 +17,11 @@ def emit_module(module: ir.Module, output: Path):
     target = llvm.Target.from_default_triple()
     machine = target.create_target_machine(codemodel="default")
     module.triple = target.triple
-    object_code = machine.emit_object(llvm.parse_assembly(str(module)))
+    llvm_module = llvm.parse_assembly(str(module))
+    runtime = llvm.parse_assembly((WINDOWS_PATH / "runtime.ll").read_text())
+    llvm_module.link_in(runtime)
+
+    object_code = machine.emit_object(llvm_module)
 
     lib_path = find_vs_lib_path("x64")
     if lib_path is None:

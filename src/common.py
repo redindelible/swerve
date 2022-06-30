@@ -23,14 +23,24 @@ class ValueStack(Generic[T]):
             self._stack: list[T] = []
 
     @contextmanager
-    def replace(self, value: T) -> T:
+    def using(self, value: T) -> T:
         self._stack.append(value)
         yield value
         self._stack.pop()
 
+    def push(self, value: T):
+        self._stack.append(value)
+
+    def pop(self) -> T:
+        return self._stack.pop()
+
     @property
-    def value(self) -> T:
+    def recent(self) -> T:
         return self._stack[-1]
+
+    @property
+    def all(self) -> list[T]:
+        return self._stack
 
 
 class UniqueList(MutableSequence[T], Generic[T]):

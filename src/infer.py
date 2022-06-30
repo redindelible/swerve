@@ -37,7 +37,7 @@ class BuiltinTrait:
         if len(arguments) != len(self.type_vars):
             raise CompilerMessage(ErrorType.COMPILATION, f"Mismatched number of arguments to generic (expected {len(self.type_vars)}, got {len(arguments)}):", loc)
         types = []
-        with self.inferrer.substitutions.replace(arguments):
+        with self.inferrer.substitutions.using(arguments):
             for type in trait.type_args:
                 types.append(self.inferrer.resolve_type(type))
             if tuple(types) not in self.reifications:
@@ -125,7 +125,7 @@ class BidirectionalTypeInference:
                 CompilerMessage(ErrorType.NOTE, f"Generic defined here:", generic.loc)
             ])
 
-        with self.substitutions.replace(arguments):
+        with self.substitutions.using(arguments):
             new_type_args: tuple[IRResolvedType, ...] = tuple(self.resolve_type(arg) for arg in generic.type_args)
 
             if new_type_args in generic.reifications:
@@ -155,7 +155,7 @@ class BidirectionalTypeInference:
                     method.function.return_type,
                     method.function.body, False, method.function.is_builtin, method.function.reifications
                 ).set_loc(generic.loc)
-                func.body = SubstituteNodes(self.substitutions.value,
+                func.body = SubstituteNodes(self.substitutions.recent,
                                             {old_param.decl: new_param.decl for new_param, old_param in zip(func.parameters, method.function.parameters)},
                                             self).perform_substitutions(func.body)
                 method.function = func
@@ -172,7 +172,7 @@ class BidirectionalTypeInference:
                 CompilerMessage(ErrorType.NOTE, f"Generic defined here:", generic.loc)
             ])
 
-        with self.substitutions.replace(arguments):
+        with self.substitutions.using(arguments):
             new_type_args: tuple[IRResolvedType, ...] = tuple(self.resolve_type(arg) for arg in generic.type_args)
 
             if new_type_args in generic.reifications:
@@ -196,7 +196,7 @@ class BidirectionalTypeInference:
                     method.function.return_type,
                     method.function.body, False, method.function.is_builtin, method.function.reifications
                 ).set_loc(generic.loc)
-                func.body = SubstituteNodes(self.substitutions.value,
+                func.body = SubstituteNodes(self.substitutions.recent,
                                             {old_param.decl: new_param.decl for new_param, old_param in zip(func.parameters, method.function.parameters)},
                                             self).perform_substitutions(func.body)
                 method.function = func
@@ -265,7 +265,7 @@ class BidirectionalTypeInference:
     def array_callback(self, array_type: IRStruct, arguments: dict[IRTypeVarType, IRResolvedType], loc: Location) -> IRStruct:
         if len(arguments) != 1:
             raise CompilerMessage(ErrorType.COMPILATION, f"Mismatched number of arguments to generic (expected 1, got {len(arguments)}):", loc)
-        with self.substitutions.replace(arguments):
+        with self.substitutions.using(arguments):
             type = self.resolve_type(array_type.type_args[0])
         if type not in self.program.array_variants:
             self.create_specific_array_type(type)
@@ -334,7 +334,7 @@ class BidirectionalTypeInference:
                 CompilerMessage(ErrorType.NOTE, f"Generic defined here:", generic.loc)
             ])
 
-        with self.substitutions.replace(arguments):
+        with self.substitutions.using(arguments):
             new_type_args: tuple[IRResolvedType, ...] = tuple(self.resolve_type(arg) for arg in generic.type_args)
         if new_type_args in generic.reifications:
             return generic.reifications[new_type_args]
@@ -360,7 +360,7 @@ class BidirectionalTypeInference:
         # substitutions: dict[IRTypeVarType, IRResolvedType] = dict(zip((cast(IRTypeVarType, type_var.type_decl.type) for type_var in generic.type_vars), arguments))
         func.body = SubstituteNodes(arguments, {old_param.decl: new_param.decl for new_param, old_param in zip(func.parameters, generic.parameters)}, self).perform_substitutions(func.body)
 
-        with self.substitutions.replace(arguments):
+        with self.substitutions.using(arguments):
             self.infer_function_type(func)
             self.infer_function_body(func)
 
@@ -558,7 +558,7 @@ class BidirectionalTypeInference:
             raise CompilerMessage(ErrorType.COMPILATION, f"Cannot prove that function always has a return value:", function.loc)
 
     def infer_function_body(self, function: IRFunction):
-        with self.expected_return.replace(Return(cast(IRResolvedType, function.return_type), function.loc)):
+        with self.expected_return.using(Return(cast(IRResolvedType, function.return_type), function.loc)):
             for stmt in function.body.body:
                 self.infer_stmt(stmt)
 
@@ -583,7 +583,7 @@ class BidirectionalTypeInference:
         stmt.decl.type = resolved_decl
 
     def infer_return_stmt(self, stmt: IRReturnStmt):
-        expected_return = self.expected_return.value
+        expected_return = self.expected_return.recent
         self.unify_expr(stmt.expr, expected_return.type, expected_return.loc)
 
     def infer_while_stmt(self, stmt: IRWhileStmt):
@@ -901,7 +901,7 @@ class BidirectionalTypeInference:
             expr.ret_type = self.resolve_type(expr.ret_type)
             if expr.ret_type is None:
                 raise CompilerMessage(ErrorType.COMPILATION, f"Type of return type could not be inferred", expr.loc)
-        with self.expected_return.replace(Return(expr.ret_type, expr.loc)):
+        with self.expected_return.using(Return(expr.ret_type, expr.loc)):
             self.unify_expr(expr.body, expr.ret_type, expr.loc)
 
         expr.yield_type = IRFunctionType([param.type for param in expr.parameters], expr.ret_type).set_loc(expr.loc)
@@ -932,8 +932,8 @@ class BidirectionalTypeInference:
             if type.is_concrete():
                 return type
             elif isinstance(type, IRTypeVarType):
-                if type in self.substitutions.value:
-                    return self.substitutions.value[type]
+                if type in self.substitutions.recent:
+                    return self.substitutions.recent[type]
                 else:
                     return type
             elif isinstance(type, IRStructType):
