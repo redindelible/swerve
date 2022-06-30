@@ -152,7 +152,6 @@ class LLVMGen:
         return closure
 
     def load_external_functions(self):
-        self.external_functions["malloc"] = ir.Function(self.module, ir.FunctionType(void_p, [i64]), "malloc")
         self.external_functions["SWERVE_gc_allocate"] = ir.Function(self.module, ir.FunctionType(void_p, [void_p, i64, void_p]), "SWERVE_gc_allocate")
         self.external_functions["SWERVE_gc_init"] = ir.Function(self.module, ir.FunctionType(void, [void_p]), "SWERVE_gc_init")
         self.external_functions["calloc"] = ir.Function(self.module, ir.FunctionType(void_p, [i64, i64]), "calloc")
@@ -305,8 +304,7 @@ class LLVMGen:
         self.decl_values[variant.constructor] = constructor_value
 
         self.builder = ir.IRBuilder(constructor.append_basic_block("entry"))
-        mem = self.builder.call(self.external_functions["malloc"], [i64(self.size_of(struct_type.type))])
-        obj = self.builder.bitcast(mem, struct_type.p_type)
+        obj = self.allocate_struct_type(struct_type)
 
         closure, size = constructor.args
 
@@ -331,8 +329,7 @@ class LLVMGen:
 
         _, *args = constructor.args
 
-        mem = self.builder.call(self.external_functions["malloc"], [i64(self.size_of(struct_type.type))])
-        obj = self.builder.bitcast(mem, struct_type.p_type)
+        obj = self.allocate_struct_type(struct_type)
 
         for field, value in zip(struct.fields, args):
             self.builder.store(value, self.get_field_ptr(obj, struct_type, field.name))
@@ -381,7 +378,10 @@ class LLVMGen:
             closure = self.allocate_struct_type(closure_type)
 
             if closure_ptr is None:
-                self.builder.store(self.closures.recent.value, self.get_field_ptr(closure, closure_type, "$enclosing"))
+                if self.closures.has_recent:
+                    self.builder.store(self.closures.recent.value, self.get_field_ptr(closure, closure_type, "$enclosing"))
+                else:
+                    self.builder.store(void_p(None), self.get_field_ptr(closure, closure_type, "$enclosing"))
             else:
                 self.builder.store(closure_ptr, self.get_field_ptr(closure, closure_type, "$enclosing"))
             self.closures.push(Closure(closure, closure_type, block))
@@ -437,7 +437,7 @@ class LLVMGen:
             else:
                 self.builder.ret(value)
         else:
-            self.generate_scope(function.body, void_p(None), (function.parameters, func.args[1:]))
+            self.generate_scope(function.body, parameters=(function.parameters, func.args[1:]))
 
             if self.builder.block.terminator is None:
                 if function.body.always_returns():

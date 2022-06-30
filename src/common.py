@@ -35,6 +35,10 @@ class ValueStack(Generic[T]):
         return self._stack.pop()
 
     @property
+    def has_recent(self) -> bool:
+        return len(self._stack) > 0
+
+    @property
     def recent(self) -> T:
         return self._stack[-1]
 
