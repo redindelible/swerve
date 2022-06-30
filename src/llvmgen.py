@@ -17,7 +17,8 @@ i64 = ir.IntType(64)
 boolean = ir.IntType(1)
 unit_type = ir.IntType(1)
 unit = unit_type(0)
-void_p = i8.as_pointer()
+void = i8
+void_p = void.as_pointer()
 
 
 def generate_llvm(program: IRProgram) -> ir.Module:
@@ -108,16 +109,13 @@ class LLVMGen:
         self.struct_types: dict[IRStructType, ManagedStructType] = {}
 
         self.gc_state_type = StructType.construct("GCState", {
+            "gc_lock": void_p,
             "white": void_p,
             "gray": void_p,
             "black": void_p,
         })
         self.gc_state = ir.GlobalVariable(self.module, self.gc_state_type.type, "swerve_gc_state")
-        self.gc_state.initializer = self.gc_state_type.type([
-            void_p(None),
-            void_p(None),
-            void_p(None)
-        ])
+        self.gc_state.initializer = self.gc_state_type.type(None)
 
         self.counter: list[int] = list(range(0, 1000000))
         shuffle(self.counter)
@@ -156,12 +154,15 @@ class LLVMGen:
     def load_external_functions(self):
         self.external_functions["malloc"] = ir.Function(self.module, ir.FunctionType(void_p, [i64]), "malloc")
         self.external_functions["SWERVE_gc_allocate"] = ir.Function(self.module, ir.FunctionType(void_p, [void_p, i64, void_p]), "SWERVE_gc_allocate")
+        self.external_functions["SWERVE_gc_init"] = ir.Function(self.module, ir.FunctionType(void, [void_p]), "SWERVE_gc_init")
         self.external_functions["calloc"] = ir.Function(self.module, ir.FunctionType(void_p, [i64, i64]), "calloc")
         self.external_functions["exit"] = ir.Function(self.module, ir.FunctionType(ir.VoidType(), [i64]), "exit")
 
     def finalize(self):
         main = ir.Function(self.module, ir.FunctionType(i64, []), "main")
         self.builder = ir.IRBuilder(main.append_basic_block("entry"))
+
+        self.builder.call(self.external_functions["SWERVE_gc_init"], [self.gc_state.bitcast(void_p)])
 
         fn_struct_p = self.decl_values[self.program.main_func.decl]
         fn_ptr = self.builder.load(self.gep(fn_struct_p, [0, 0]))
