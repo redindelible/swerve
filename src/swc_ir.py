@@ -121,6 +121,7 @@ class IRValueDecl:
     declarer: IRNode | None = None
     put_in_closure: bool = False
     closure_index: int = 0
+    frame_index: int | None = None
     in_block: IRBlock | None = None
 
     def __hash__(self):
