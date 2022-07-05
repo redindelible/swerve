@@ -18,6 +18,7 @@ i64 = ir.IntType(64)
 boolean = ir.IntType(1)
 unit_type = ir.IntType(1)
 unit = unit_type(0)
+no_ret = ir.VoidType()
 void = i8
 void_p = void.as_pointer()
 void_p_p = void_p.as_pointer()
@@ -89,12 +90,31 @@ class StructType:
 
 
 class ManagedStructType(StructType):
-    def __init__(self, name: str, llvm_type: ir.IdentifiedStructType):
+    def __init__(self, name: str, llvm_type: ir.IdentifiedStructType, trace: ir.Function, move_f: ir.Function):
         super().__init__(name, llvm_type)
 
         self.add_field("$next", void_p)
         self.add_field("$color", i8)
-        self.add_field("$tag", void_p)
+        self.add_field("$trace", ir.FunctionType(no_ret, [void_p, void_p]).as_pointer())
+
+        self.trace = trace
+        self.move_f = move_f
+        entry = self.trace.append_basic_block("entry")
+        self.builder = ir.IRBuilder(entry)
+        self.builder.ret_void()
+        self.builder.position_at_start(entry)
+        self.gc_state, self.obj = self.trace.args
+        self.obj = self.builder.bitcast(self.obj, llvm_type.as_pointer())
+
+    def add_managed_field(self, name: str, type: ir.Type, ir_type: IRType | None):
+        self.add_field(name, type)
+
+        field_ptr = self.builder.gep(self.obj, [i32(0), i32(self.index_of(name))])
+        if ir_type is None:
+            managed_ptr = field_ptr
+        else:
+            managed_ptr = LLVMGen.get_managed_pointer(field_ptr, ir_type, self.builder)
+        self.builder.store(self.builder.call(self.move_f, [self.gc_state, self.builder.bitcast(self.builder.load(managed_ptr), void_p)]), self.builder.bitcast(managed_ptr, void_p_p))
 
 
 class LLVMGen:
@@ -120,12 +140,15 @@ class LLVMGen:
 
         self.gc_state_type = StructType.construct("GCState", {
             "gc_lock": void_p,
+            "gc_release": void_p,
             "plz_stop": boolean,
+            "num_threads": i64,
+            "num_completed": i64,
             "white": void_p,
             "gray": void_p,
             "black": void_p,
         })
-        self.gc_state = ir.GlobalVariable(self.module, self.gc_state_type.type, "swerve_gc_state")
+        self.gc_state = ir.GlobalVariable(self.module, self.gc_state_type.type, "SWERVE_gc_state")
         self.gc_state.initializer = self.gc_state_type.type(None)
 
         self.counter: list[int] = list(range(0, 1000000))
@@ -150,35 +173,47 @@ class LLVMGen:
     def new_managed_struct_type(self, *, name: str = None) -> ManagedStructType:
         if name is None:
             name = self.new_name("struct")
-        struct_type = ManagedStructType(name, self.module.context.get_identified_type(name))
+
+        struct = self.module.context.get_identified_type(name)
+
+        f = ir.Function(self.module, ir.FunctionType(no_ret, [void_p, void_p]), f"{name}_trace")
+
+        struct_type = ManagedStructType(name, struct, f, self.external_functions["SWERVE_gc_move"])
         return struct_type
 
     def allocate_struct_type(self, struct_type: ManagedStructType) -> ir.Value:
         closure = self.builder.call(self.external_functions["SWERVE_gc_allocate"], [
             self.gc_state.bitcast(void_p),
             i64(self.size_of(struct_type.type)),
-            null
+            struct_type.trace,
         ])
         closure = self.builder.bitcast(closure, struct_type.p_type)
         return closure
 
     def load_external_functions(self):
-        self.external_functions["SWERVE_gc_allocate"] = ir.Function(self.module, ir.FunctionType(void_p, [void_p, i64, void_p]), "SWERVE_gc_allocate")
-        self.external_functions["SWERVE_gc_init"] = ir.Function(self.module, ir.FunctionType(void, [void_p]), "SWERVE_gc_init")
-        self.external_functions["SWERVE_gc_check"] = ir.Function(self.module, ir.FunctionType(void, [void_p, void_p]), "SWERVE_gc_check")
+        self.external_functions["SWERVE_gc_allocate"] = ir.Function(self.module, ir.FunctionType(void_p, [void_p, i64, ir.FunctionType(no_ret, [void_p, void_p]).as_pointer()]), "SWERVE_gc_allocate")
+        self.external_functions["SWERVE_gc_init"] = ir.Function(self.module, ir.FunctionType(no_ret, [void_p]), "SWERVE_gc_init")
+        self.external_functions["SWERVE_gc_check"] = ir.Function(self.module, ir.FunctionType(no_ret, [void_p, void_p]), "SWERVE_gc_check")
+        self.external_functions["SWERVE_gc_move"] = ir.Function(self.module, ir.FunctionType(void_p, [void_p, void_p]), "SWERVE_gc_move")
+        self.external_functions["SWERVE_new_thread"] = ir.Function(self.module, ir.FunctionType(void, [void_p, ir.FunctionType(i64, [void_p, void_p]).as_pointer(), void_p]), "SWERVE_new_thread")
+        self.external_functions["SWERVE_gc_main"] = ir.Function(self.module, ir.FunctionType(no_ret, [void_p]), "SWERVE_gc_main")
         self.external_functions["calloc"] = ir.Function(self.module, ir.FunctionType(void_p, [i64, i64]), "calloc")
-        self.external_functions["exit"] = ir.Function(self.module, ir.FunctionType(ir.VoidType(), [i64]), "exit")
+        self.external_functions["exit"] = ir.Function(self.module, ir.FunctionType(no_ret, [i64]), "exit")
 
     @contextlib.contextmanager
-    def in_frame(self, managed: list[IRValueDecl]) -> ContextManager[Frame]:
+    def in_frame(self, managed: list[IRValueDecl], closure_type: ManagedStructType | None) -> ContextManager[Frame]:
         frame_type = StructType("frame", ir.LiteralStructType([]))
         frame_type.add_field("$size", i64)
         frame_type.add_field("$prev", void_p)
-        frame_type.add_field("$closure", void_p)
+        if closure_type is not None:
+            frame_type.add_field("$closure", closure_type.p_type)
         for managed_var in managed:
             frame_type.add_field(f"${managed_var.frame_index}", void_p_p)
         frame = self.builder.alloca(frame_type.type)
-        self.builder.store(frame_type.type([i64(len(managed)), null, null] + [null.bitcast(void_p_p) for _ in managed]), frame)
+        if closure_type is None:
+            self.builder.store(frame_type.type([i64(len(managed)), null] + [null.bitcast(void_p_p) for _ in managed]), frame)
+        else:
+            self.builder.store(frame_type.type([i64(len(managed) + 1), null, null] + [null.bitcast(void_p_p) for _ in managed]), frame)
         self.builder.store(self.builder.bitcast(self.frames.recent.value, void_p), self.get_field_ptr(frame, frame_type, "$prev"))
 
         frame_info = Frame(frame, frame_type)
@@ -191,12 +226,13 @@ class LLVMGen:
 
         self.builder.call(self.external_functions["SWERVE_gc_init"], [self.gc_state.bitcast(void_p)])
 
-        with self.frames.using(Frame(null)):
-            with self.in_frame([]) as frame:
-                fn_struct_p = self.decl_values[self.program.main_func.decl]
-                fn_ptr = self.builder.load(self.gep(fn_struct_p, [0, 0]))
-                closure_ptr = self.builder.load(self.gep(fn_struct_p, [0, 1]))
-                self.builder.ret(self.builder.call(fn_ptr, [self.builder.bitcast(frame.value, void_p), closure_ptr] + list(main.args)))
+        fn_struct_p = self.decl_values[self.program.main_func.decl]
+        fn_ptr = self.builder.load(self.gep(fn_struct_p, [0, 0]))
+        closure_ptr = self.builder.load(self.gep(fn_struct_p, [0, 1]))
+        self.builder.call(self.external_functions["SWERVE_new_thread"], [self.gc_state.bitcast(void_p), fn_ptr, closure_ptr])
+
+        self.builder.call(self.external_functions["SWERVE_gc_main"], [self.gc_state.bitcast(void_p)])
+        self.builder.ret(i64(0))
 
     def load_traits(self):
         for trait in self.program.traits:
@@ -218,8 +254,7 @@ class LLVMGen:
     def load_structs(self):
         for struct in self.program.structs:
             if len(struct.get_type_vars()) == 0:
-                struct_type = self.module.context.get_identified_type(self.new_name(struct.name))
-                self.struct_types[cast(IRStructType, struct.type_decl.type)] = ManagedStructType(struct_type.name, struct_type)
+                self.struct_types[cast(IRStructType, struct.type_decl.type)] = self.new_managed_struct_type(name=self.new_name(struct.name))
 
                 for trait in struct.supertraits:
                     trait = cast(IRTraitType, trait)
@@ -230,14 +265,16 @@ class LLVMGen:
 
         for type, array_variant in self.program.array_variants.items():
             if type.is_concrete():
-                struct_type = self.module.context.get_identified_type(self.new_name(array_variant.array.name))
-                self.struct_types[cast(IRStructType, array_variant.array.type_decl.type)] = ManagedStructType(struct_type.name, struct_type)
+                self.struct_types[cast(IRStructType, array_variant.array.type_decl.type)] = self.new_managed_struct_type(name=self.new_name(array_variant.array.name))
 
         for struct in self.program.structs:
             if len(struct.get_type_vars()) == 0:
                 struct_type = self.struct_types[cast(IRStructType, struct.type_decl.type)]
                 for field in struct.fields:
-                    struct_type.add_field(field.name, self.generate_type(field.type))
+                    if self.type_is_managed(field.type):
+                        struct_type.add_managed_field(field.name, self.generate_type(field.type), field.type)
+                    else:
+                        struct_type.add_field(field.name, self.generate_type(field.type))
 
                 self.generate_constructor(struct, struct_type)
 
@@ -404,32 +441,40 @@ class LLVMGen:
                 decl.frame_index = len(frame_vars)
                 frame_vars.append(decl)
 
-        with self.in_frame(frame_vars) as frame:
-            if len(closed) > 0 or closure_ptr is not None:
-                closure_type = self.new_managed_struct_type()
-                closure_type.add_field("$enclosing", void_p)
-                for var in closed:
+        if len(closed) > 0 or closure_ptr is not None:
+            closure_type = self.new_managed_struct_type()
+            closure_type.add_managed_field("$enclosing", void_p, None)
+            for var in closed:
+                if self.type_is_managed(var.type):
+                    closure_type.add_managed_field(f"${var.closure_index}", self.generate_type(var.type), var.type)
+                else:
                     closure_type.add_field(f"${var.closure_index}", self.generate_type(var.type))
+        else:
+            closure_type = None
 
-                closure = self.allocate_struct_type(closure_type)
-                self.builder.store(closure, self.get_field_ptr(frame.value, frame.type, "$closure"))
+        with self.in_frame(frame_vars, closure_type) as frame:
+            if closure_type is not None:
+                closure_obj = self.allocate_struct_type(closure_type)
+                closure_loc = self.builder.alloca(closure_type.p_type)
+                self.builder.store(closure_obj, closure_loc)
+                self.builder.store(closure_loc, self.get_field_ptr(frame.value, frame.type, "$closure"))
 
                 if closure_ptr is None:
                     if self.closures.has_recent:
-                        self.builder.store(self.closures.recent.value, self.get_field_ptr(closure, closure_type, "$enclosing"))
+                        self.builder.store(self.builder.load(self.closures.recent.value), self.get_field_ptr(closure_obj, closure_type, "$enclosing"))
                     else:
-                        self.builder.store(null, self.get_field_ptr(closure, closure_type, "$enclosing"))
+                        self.builder.store(null, self.get_field_ptr(closure_obj, closure_type, "$enclosing"))
                 else:
-                    self.builder.store(closure_ptr, self.get_field_ptr(closure, closure_type, "$enclosing"))
-                with self.closures.using(Closure(closure, closure_type, block)):
+                    self.builder.store(closure_ptr, self.get_field_ptr(closure_obj, closure_type, "$enclosing"))
+                with self.closures.using(Closure(closure_loc, closure_type, block)):
                     for ir_arg, llvm_arg in zip(ir_parameters, llvm_parameters):
                         if ir_arg.decl.put_in_closure:
-                            self.builder.store(llvm_arg, self.get_field_ptr(self.closures.recent.value, closure_type, f"${ir_arg.decl.closure_index}"))
+                            self.builder.store(llvm_arg, self.get_field_ptr(self.builder.load(self.closures.recent.value), closure_type, f"${ir_arg.decl.closure_index}"))
                         else:
                             arg_slot = self.decl_values[ir_arg.decl] = self.builder.alloca(self.generate_type(ir_arg.type))
                             self.builder.store(llvm_arg, arg_slot)
                             if ir_arg.decl.frame_index is not None:
-                                managed_ptr = self.get_managed_pointer(arg_slot, ir_arg.type)
+                                managed_ptr = self.get_managed_pointer(arg_slot, ir_arg.type, self.builder)
                                 self.builder.store(self.builder.bitcast(managed_ptr, void_p_p), self.get_field_ptr(frame.value, frame.type, f"${ir_arg.decl.frame_index}"))
 
                     last_result = None
@@ -443,7 +488,7 @@ class LLVMGen:
                     arg_slot = self.decl_values[ir_arg.decl] = self.builder.alloca(self.generate_type(ir_arg.type))
                     self.builder.store(llvm_arg, arg_slot)
                     if ir_arg.decl.frame_index is not None:
-                        managed_ptr = self.get_managed_pointer(arg_slot, ir_arg.type)
+                        managed_ptr = self.get_managed_pointer(arg_slot, ir_arg.type, self.builder)
                         self.builder.store(self.builder.bitcast(managed_ptr, void_p_p), self.get_field_ptr(frame.value, frame.type, f"${ir_arg.decl.frame_index}"))
 
                 last_result = None
@@ -504,11 +549,11 @@ class LLVMGen:
 
     def generate_decl_stmt(self, stmt: IRDeclStmt):
         if stmt.decl.put_in_closure:
-            self.decl_values[stmt.decl] = self.builder.gep(self.closures.recent.value, [i32(0), i32(stmt.decl.closure_index)])
+            self.decl_values[stmt.decl] = self.builder.gep(self.builder.load(self.closures.recent.value), [i32(0), i32(stmt.decl.closure_index)])
         else:
             loc = self.decl_values[stmt.decl] = self.builder.alloca(self.generate_type(stmt.type))
             if stmt.decl.frame_index is not None:
-                managed_ptr = self.get_managed_pointer(loc, stmt.type)
+                managed_ptr = self.get_managed_pointer(loc, stmt.type, self.builder)
                 self.builder.store(self.builder.bitcast(managed_ptr, void_p_p), self.get_field_ptr(self.frames.recent.value, self.frames.recent.type, f"${stmt.decl.frame_index}"))
         self.builder.store(self.generate_expr(stmt.init), self.decl_values[stmt.decl])
 
@@ -590,7 +635,7 @@ class LLVMGen:
         name = self.decl_values[expr.name]
         if expr.name.in_block is not None:
             if expr.name.put_in_closure:
-                current_closure = self.closures.recent.value
+                current_closure = self.builder.load(self.closures.recent.value)
                 for closure in reversed(self.closures.all):
                     if expr.name.in_block == closure.from_block:
                         return self.builder.load(self.gep(self.builder.bitcast(current_closure, closure.struct_type.p_type),
@@ -802,11 +847,12 @@ class LLVMGen:
 
         lambda_obj_type = cast(ir.LiteralStructType, self.generate_type(ir_func_type))
         lambda_obj = self.builder.insert_value(lambda_obj_type(None), func, 0)
-        lambda_obj = self.builder.insert_value(lambda_obj, self.builder.bitcast(self.closures.recent.value, void_p), 1)
+        lambda_obj = self.builder.insert_value(lambda_obj, self.builder.bitcast(self.builder.load(self.closures.recent.value), void_p), 1)
 
         return lambda_obj
 
-    def type_is_managed(self, type: IRType) -> bool:
+    @staticmethod
+    def type_is_managed(type: IRType) -> bool:
         if not isinstance(type, IRResolvedType):
             raise ValueError(type)
         if isinstance(type, (IRStructType, IRTraitType, IRFunctionType)):
@@ -814,14 +860,14 @@ class LLVMGen:
         else:
             return False
 
-    def get_managed_pointer(self, value: ir.Value, type: IRType) -> ir.Value:
+    @staticmethod
+    def get_managed_pointer(value: ir.Value, type: IRType, builder: ir.IRBuilder) -> ir.Value:
         if isinstance(type, IRStructType):
             return value
         elif isinstance(type, IRTraitType):
-            trait_type = self.trait_types[type]
-            return self.gep(value, [0, 1])
+            return builder.gep(value, [i32(0), i32(1)])
         elif isinstance(type, IRFunctionType):
-            return self.gep(value, [0, 1])
+            return builder.gep(value, [i32(0), i32(1)])
         else:
             raise ValueError(type.__class__)
 
