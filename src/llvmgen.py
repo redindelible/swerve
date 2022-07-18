@@ -93,8 +93,8 @@ class ManagedStructType(StructType):
     def __init__(self, name: str, llvm_type: ir.IdentifiedStructType, trace: ir.Function, move_f: ir.Function):
         super().__init__(name, llvm_type)
 
+        self.add_field("$obj-size", i64)
         self.add_field("$next", void_p)
-        self.add_field("$color", i8)
         self.add_field("$trace", ir.FunctionType(no_ret, [void_p, void_p]).as_pointer())
 
         self.trace = trace
@@ -114,7 +114,7 @@ class ManagedStructType(StructType):
             managed_ptr = field_ptr
         else:
             managed_ptr = LLVMGen.get_managed_pointer(field_ptr, ir_type, self.builder)
-        self.builder.store(self.builder.call(self.move_f, [self.gc_state, self.builder.bitcast(self.builder.load(managed_ptr), void_p)]), self.builder.bitcast(managed_ptr, void_p_p))
+        self.builder.call(self.move_f, [self.gc_state, self.builder.bitcast(managed_ptr, void_p_p)])
 
 
 class LLVMGen:
@@ -144,9 +144,12 @@ class LLVMGen:
             "plz_stop": boolean,
             "num_threads": i64,
             "num_completed": i64,
-            "white": void_p,
-            "gray": void_p,
-            "black": void_p,
+            "recent": void_p,
+            "from_space": void_p,
+            "to_space": void_p,
+            "space_size": i64,
+            "used_mem": i64,
+            "to_used": i64,
         })
         self.gc_state = ir.GlobalVariable(self.module, self.gc_state_type.type, "SWERVE_gc_state")
         self.gc_state.initializer = self.gc_state_type.type(None)
@@ -194,8 +197,8 @@ class LLVMGen:
         self.external_functions["SWERVE_gc_allocate"] = ir.Function(self.module, ir.FunctionType(void_p, [void_p, i64, ir.FunctionType(no_ret, [void_p, void_p]).as_pointer()]), "SWERVE_gc_allocate")
         self.external_functions["SWERVE_gc_init"] = ir.Function(self.module, ir.FunctionType(no_ret, [void_p]), "SWERVE_gc_init")
         self.external_functions["SWERVE_gc_check"] = ir.Function(self.module, ir.FunctionType(no_ret, [void_p, void_p]), "SWERVE_gc_check")
-        self.external_functions["SWERVE_gc_move"] = ir.Function(self.module, ir.FunctionType(void_p, [void_p, void_p]), "SWERVE_gc_move")
-        self.external_functions["SWERVE_new_thread"] = ir.Function(self.module, ir.FunctionType(void, [void_p, ir.FunctionType(i64, [void_p, void_p]).as_pointer(), void_p]), "SWERVE_new_thread")
+        self.external_functions["SWERVE_gc_move"] = ir.Function(self.module, ir.FunctionType(no_ret, [void_p, void_p_p]), "SWERVE_gc_move")
+        self.external_functions["SWERVE_new_thread"] = ir.Function(self.module, ir.FunctionType(no_ret, [void_p, ir.FunctionType(i64, [void_p, void_p]).as_pointer(), void_p]), "SWERVE_new_thread")
         self.external_functions["SWERVE_gc_main"] = ir.Function(self.module, ir.FunctionType(no_ret, [void_p]), "SWERVE_gc_main")
         self.external_functions["calloc"] = ir.Function(self.module, ir.FunctionType(void_p, [i64, i64]), "calloc")
         self.external_functions["exit"] = ir.Function(self.module, ir.FunctionType(no_ret, [i64]), "exit")
@@ -206,14 +209,14 @@ class LLVMGen:
         frame_type.add_field("$size", i64)
         frame_type.add_field("$prev", void_p)
         if closure_type is not None:
-            frame_type.add_field("$closure", closure_type.p_type)
+            frame_type.add_field("$closure", void_p_p)
         for managed_var in managed:
             frame_type.add_field(f"${managed_var.frame_index}", void_p_p)
         frame = self.builder.alloca(frame_type.type)
         if closure_type is None:
             self.builder.store(frame_type.type([i64(len(managed)), null] + [null.bitcast(void_p_p) for _ in managed]), frame)
         else:
-            self.builder.store(frame_type.type([i64(len(managed) + 1), null, null] + [null.bitcast(void_p_p) for _ in managed]), frame)
+            self.builder.store(frame_type.type([i64(len(managed) + 1), null, null.bitcast(void_p_p)] + [null.bitcast(void_p_p) for _ in managed]), frame)
         self.builder.store(self.builder.bitcast(self.frames.recent.value, void_p), self.get_field_ptr(frame, frame_type, "$prev"))
 
         frame_info = Frame(frame, frame_type)
@@ -299,7 +302,7 @@ class LLVMGen:
     def generate_array_variant(self, variant: ArrayVariant):
         struct_type = self.struct_types[cast(IRStructType, variant.array.type_decl.type)]
         struct_type.add_field("$mem", self.generate_type(variant.type).as_pointer())
-        struct_type.add_field("$len", i64)
+        struct_type.add_field("_size", i64)
 
         self.generate_array_constructor(variant, struct_type, self.generate_type(variant.type))
 
@@ -323,7 +326,7 @@ class LLVMGen:
             with self.builder.if_then(self.builder.icmp_signed("<", index, i64(0))):
                 self.builder.branch(err_block)
 
-            arr_size = self.builder.load(self.get_field_ptr(arr, struct_type, "$len"))
+            arr_size = self.builder.load(self.get_field_ptr(arr, struct_type, "_size"))
             with self.builder.if_then(self.builder.icmp_signed(">=", index, arr_size)):
                 self.builder.branch(err_block)
             array = self.builder.load(self.get_field_ptr(arr, struct_type, "$mem"))
@@ -350,7 +353,7 @@ class LLVMGen:
         with self.builder.goto_block(entry_block):
             with self.builder.if_then(self.builder.icmp_signed("<", index, i64(0))):
                 self.builder.branch(err_block)
-            arr_size = self.builder.load(self.get_field_ptr(arr, struct_type, f"$len"))
+            arr_size = self.builder.load(self.get_field_ptr(arr, struct_type, f"_size"))
             with self.builder.if_then(self.builder.icmp_signed(">=", index, arr_size)):
                 self.builder.branch(err_block)
             array = self.builder.load(self.get_field_ptr(arr, struct_type, f"$mem"))
@@ -371,14 +374,16 @@ class LLVMGen:
         self.decl_values[variant.constructor] = constructor_value
 
         self.builder = ir.IRBuilder(constructor.append_basic_block("entry"))
-        obj = self.allocate_struct_type(struct_type)
 
         frame, closure, size = constructor.args
+
+        with self.frames.using(Frame(frame)):
+            obj = self.allocate_struct_type(struct_type)
 
         memory = self.builder.call(self.external_functions["calloc"], [size, i64(self.size_of(value_type))])
         memory = self.builder.bitcast(memory, value_type.as_pointer())
         self.builder.store(memory, self.get_field_ptr(obj, struct_type, f"$mem"))
-        self.builder.store(size, self.get_field_ptr(obj, struct_type, f"$len"))
+        self.builder.store(size, self.get_field_ptr(obj, struct_type, f"_size"))
         self.builder.ret(obj)
 
     def generate_constructor(self, struct: IRStruct, struct_type: ManagedStructType):
@@ -396,7 +401,8 @@ class LLVMGen:
 
         frame, closure, *args = constructor.args
 
-        obj = self.allocate_struct_type(struct_type)
+        with self.frames.using(Frame(frame)):
+            obj = self.allocate_struct_type(struct_type)
 
         for field, value in zip(struct.fields, args):
             self.builder.store(value, self.get_field_ptr(obj, struct_type, field.name))
@@ -457,7 +463,7 @@ class LLVMGen:
                 closure_obj = self.allocate_struct_type(closure_type)
                 closure_loc = self.builder.alloca(closure_type.p_type)
                 self.builder.store(closure_obj, closure_loc)
-                self.builder.store(closure_loc, self.get_field_ptr(frame.value, frame.type, "$closure"))
+                self.builder.store(self.builder.bitcast(closure_loc, void_p_p), self.get_field_ptr(frame.value, frame.type, "$closure"))
 
                 if closure_ptr is None:
                     if self.closures.has_recent:
@@ -847,7 +853,7 @@ class LLVMGen:
 
         lambda_obj_type = cast(ir.LiteralStructType, self.generate_type(ir_func_type))
         lambda_obj = self.builder.insert_value(lambda_obj_type(None), func, 0)
-        lambda_obj = self.builder.insert_value(lambda_obj, self.builder.bitcast(self.builder.load(self.closures.recent.value), void_p), 1)
+        lambda_obj = self.builder.insert_value(lambda_obj, self.builder.bitcast(self.builder.load(self.closures.recent.value), void_p) if self.closures.has_recent else null, 1)
 
         return lambda_obj
 

@@ -13,22 +13,20 @@ struct GCState {
     uint64_t num_threads;
     uint64_t num_completed;
 
+    struct ObjectHeader* recent;
+
     void* from_space;
-    uint64_t from_size;
     void* to_space;
-    uint64_t to_size;
+    uint64_t space_size;
 
     uint64_t used_mem;
-
-    struct ObjectHeader* white;
-    struct ObjectHeader* gray;
-    struct ObjectHeader* black;
+    uint64_t to_used;
 };
 
 
 struct ObjectHeader {
-    struct ObjectHeader* next;
-    uint8_t color;
+    uint64_t size;
+    struct ObjectHeader* prev;
     void (*trace)(struct GCState*, void*);
 };
 
@@ -36,7 +34,7 @@ struct ObjectHeader {
 struct Frame {
     uint64_t count;
     struct Frame* prev;
-    void** objects[];
+    struct ObjectHeader** objects[];
 };
 
 
@@ -44,12 +42,39 @@ void* SWERVE_gc_allocate(struct GCState* gc_state, uint64_t size, void (*trace)(
     WaitForSingleObject(gc_state->gc_lock, INFINITE);
     struct ObjectHeader* obj = gc_state->from_space + gc_state->used_mem;
     gc_state->used_mem += size;
-    obj->next = gc_state->gray;
-    gc_state->gray = obj;
-    obj->color = 1;
+    obj->size = size;
     obj->trace = trace;
     ReleaseMutex(gc_state->gc_lock);
     return (void*) obj;
+}
+
+
+void SWERVE_gc_move(struct GCState* gc_state, struct ObjectHeader** obj_loc) {
+    if (obj_loc == NULL) {
+        return;
+    }
+    struct ObjectHeader* obj = *obj_loc;
+    if (obj == NULL) {
+        return;
+    }
+    if ((void*) gc_state->from_space <= obj && obj < (void*) gc_state->from_space + gc_state->space_size) {
+        if (obj->size == 0) {
+            *obj_loc = obj->prev;
+            return;
+        }
+        uint64_t obj_size = obj->size;
+        struct ObjectHeader* new_obj = gc_state->to_space + gc_state->to_used;
+        gc_state->to_used += obj_size;
+
+        memcpy(new_obj, obj, obj_size);
+        new_obj->prev = gc_state->recent;
+        gc_state->recent = new_obj;
+
+        obj->size = 0;
+        obj->prev = new_obj;
+
+        *obj_loc = new_obj;
+    }
 }
 
 
@@ -57,17 +82,18 @@ void SWERVE_gc_check(struct Frame* frame, struct GCState* gc_state) {
     if (gc_state->plz_stop) {
         WaitForSingleObject(gc_state->gc_lock, INFINITE);
 
-
+        while (frame != NULL) {
+            for (uint64_t i = 0; i < frame->count; i++) {
+                SWERVE_gc_move(gc_state, frame->objects[i]);
+            }
+            frame = frame->prev;
+        }
 
         ReleaseMutex(gc_state->gc_lock);
         __atomic_add_fetch(&gc_state->num_completed, 1, __ATOMIC_SEQ_CST);
         WaitForSingleObject(gc_state->gc_release, INFINITE);
+        __atomic_sub_fetch(&gc_state->num_completed, 1, __ATOMIC_SEQ_CST);
     }
-}
-
-
-void* SWERVE_gc_move(struct GCState* gc_state, struct ObjectHeader* obj) {
-    return obj;
 }
 
 
@@ -98,22 +124,54 @@ void SWERVE_new_thread(struct GCState* gc_state, uint64_t (*f)(void*, void*), vo
 
 
 void SWERVE_gc_main(struct GCState* gc_state) {
+    int i = 0;
     while (true) {
         SwitchToThread();
         if (gc_state->num_threads == 0) {
             return;
         }
-        ResetEvent(gc_state->gc_release);
-        gc_state->plz_stop = true;
-        while (true) {
-            SwitchToThread();
-            if (gc_state->num_threads == gc_state->num_completed) {
-                break;
+
+        if (true) {
+            gc_state->recent = NULL;
+            gc_state->to_used = 0;
+
+            ResetEvent(gc_state->gc_release);
+
+            gc_state->plz_stop = true;
+
+            while (true) {
+                SwitchToThread();
+                if (gc_state->num_threads == gc_state->num_completed) {
+                    break;
+                }
+            }
+
+            while (gc_state->recent != NULL) {
+                struct ObjectHeader* recent = gc_state->recent;
+                gc_state->recent = recent->prev;
+
+                recent->trace(gc_state, recent);
+            }
+
+            // TODO just swap
+            free(gc_state->from_space);
+            gc_state->from_space = gc_state->to_space;
+            gc_state->to_space = malloc(1024);
+            memset(gc_state->to_space, 34, 1024);
+
+//            printf("Completed collection: freed %lli bytes of memory.\n",  gc_state->used_mem - gc_state->to_used);
+
+            gc_state->used_mem = gc_state->to_used;
+
+            gc_state->plz_stop = false;
+            SetEvent(gc_state->gc_release);
+            while (true) {
+                SwitchToThread();
+                if (gc_state->num_completed == 0) {
+                    break;
+                }
             }
         }
-        gc_state->num_completed = 0;
-        gc_state->plz_stop = false;
-        SetEvent(gc_state->gc_release);
     }
 }
 
@@ -125,14 +183,12 @@ void SWERVE_gc_init(struct GCState* gc_state) {
     gc_state->num_threads = 0;
     gc_state->num_completed = 0;
 
+    gc_state->space_size = 1024;
     gc_state->from_space = malloc(1024);
-    gc_state->from_size = 1024;
     gc_state->to_space = malloc(1024);
-    gc_state->to_size = 1024;
 
     gc_state->used_mem = 0;
+    gc_state->to_used = 0;
 
-    gc_state->white = NULL;
-    gc_state->gray = NULL;
-    gc_state->black = NULL;
+    gc_state->recent = NULL;
 }

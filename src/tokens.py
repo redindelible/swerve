@@ -208,13 +208,13 @@ class TokenStream:
                 if self._curr == "=":
                     self._advance()
                     yield self._get_token(TokenType.SLASH_EQUAL)
-                elif self._next == "/":
-                    self._advance()
-                    if self._curr == "=":
-                        self._advance()
-                        yield self._get_token(TokenType.SLASH_SLASH_EQUAL)
-                    else:
-                        yield self._get_token(TokenType.SLASH_SLASH)
+                # elif self._curr == "/":
+                #     self._advance()
+                #     if self._curr == "=":
+                #         self._advance()
+                #         yield self._get_token(TokenType.SLASH_SLASH_EQUAL)
+                #     else:
+                #         yield self._get_token(TokenType.SLASH_SLASH)
                 else:
                     yield self._get_token(TokenType.SLASH)
             elif self._curr == "%":

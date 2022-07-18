@@ -528,6 +528,12 @@ class ParseState:
                 self.expect(TokenType.GREATER)
                 right = self.parse_precedence_5().as_expr()
                 left = ASTGreaterExpr(left_expr, right, self.pop_loc().combine(left.loc))
+            elif self.match(TokenType.GREATER_EQUAL):
+                left_expr = left.as_expr()
+                self.push_loc()
+                self.expect(TokenType.GREATER_EQUAL)
+                right = self.parse_precedence_5().as_expr()
+                left = ASTGreaterEqualExpr(left_expr, right, self.pop_loc().combine(left.loc))
             elif self.match(TokenType.EQUAL_EQUAL):
                 left_expr = left.as_expr()
                 self.push_loc()

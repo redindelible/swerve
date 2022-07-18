@@ -214,7 +214,7 @@ class BidirectionalTypeInference:
         array = IRStruct(
             type_decl,
             value_decl,
-            "_array", [], [], [], (IRTypeVarType(array_type_var),), self.program.array_reifications,
+            "_array", [], [IRField("_size", IRIntegerType(64))], [], (IRTypeVarType(array_type_var),), self.program.array_reifications,
             lambda a, l: self.array_callback(array, a, l)
         )
         array_type = array.type_decl.type = IRStructType(array)
@@ -278,7 +278,7 @@ class BidirectionalTypeInference:
         array = IRStruct(
             IRTypeDecl(IRUnresolvedUnknownType(), array_loc),
             array_constructor,
-            f"_array", [], [], [], (type,), self.program.array_reifications,
+            f"_array", [], [IRField("_size", IRIntegerType(64))], [], (type,), self.program.array_reifications,
             lambda a, l: self.array_callback(array, a, l)
         )
         array_type = array.type_decl.type = IRStructType(array)
