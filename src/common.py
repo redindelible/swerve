@@ -135,6 +135,9 @@ class Location:
     def short_context(self) -> str:
         raise NotImplementedError()
 
+    def line(self) -> int:
+        return 0
+
 
 class BuiltinLocation(Location):
     def in_context(self) -> str:
@@ -185,3 +188,6 @@ class SourceLocation(Location):
     def short_context(self) -> str:
         line_no, line_start, line = self.source.get_index_line(self.index)
         return f"on line {line_no} of {self.source.path.name}"
+
+    def line(self) -> int:
+        return self.source.get_index_line(self.index)[0]

@@ -21,8 +21,17 @@ fn print_number(n: int) -> () {
 }
 
 
+struct Holder[T] {
+    item: T
+}
+
+
 fn main() -> int {
     let li := List[int]::new(10, |i| i * 2);
-    print_number(li[6]);
+    let item := li[6];
+    print_number(item);
+
+    let li2 := List[Holder[int]]::new(10, |i| Holder[int](li[i]));
+    print_number(li2[6].item);
     return 0;
 }

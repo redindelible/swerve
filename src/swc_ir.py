@@ -612,7 +612,7 @@ class IRBlock(IRExpr):
     def __post_init__(self):
         super().__post_init__()
         for decl in self.declared:
-            decl.in_block = True
+            decl.in_block = self
 
     def always_returns(self) -> bool:
         if len(self.body) == 0:

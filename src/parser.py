@@ -201,7 +201,8 @@ class ParseState:
                 raise CompilerMessage(ErrorType.PARSE, "Generic functions cannot be marked 'extern'", self.pop_loc())
             return ASTGenericFunction(name.text, type_vars, parameters, ret_type, body, self.pop_loc())
         else:
-            return ASTFunction(name.text, is_extern, parameters, ret_type, body, self.pop_loc())
+            loc = self.pop_loc()
+            return ASTFunction(name.text, is_extern, parameters, ret_type, body, loc)
 
     def parse_struct(self) -> ASTStruct:
         self.push_loc()
@@ -452,7 +453,8 @@ class ParseState:
                 return_unit = True
 
         self.expect(TokenType.RIGHT_BRACE)
-        return ASTBlockExpr(stmts, return_unit, self.pop_loc())
+        loc = self.pop_loc()
+        return ASTBlockExpr(stmts, return_unit, loc)
 
     def parse_precedence_2(self) -> ASTMaybeExpr:
         left = self.parse_precedence_3()
@@ -697,8 +699,10 @@ class ParseState:
             elif len(items) == 0:
                 return ASTMaybeUnit(self.pop_loc())
             elif len(items) == 1 and not had_comma:
+                self.pop_loc()
                 return items[0]
             else:
+                self.pop_loc()
                 self.expect(TokenType.ARROW)
         elif self.match(TokenType.BAR):
             self.push_loc()

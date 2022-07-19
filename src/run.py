@@ -51,7 +51,7 @@ def main():
         msg.display(stderr)
         return
 
-    print(module)
+    # print(module)
 
     emit_module(module, output_file)
 

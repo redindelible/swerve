@@ -99,7 +99,7 @@ class BuiltinTrait:
                 method_decl, method.name, tuple(types), [
                     IRParameter.create(param.name, self.inferrer.resolve_type(param.type)) for param in method.function.parameters
                 ], self.inferrer.resolve_type(method.function.return_type), IRBlock([], [], False), False, True, method_callback, {}
-            ))
+            )).set_loc(method.loc)
             trait.methods.append(ir_method)
         if trait_type.is_concrete():
             self.inferrer.program.traits.append(trait)
@@ -373,6 +373,10 @@ class BidirectionalTypeInference:
         t = BuiltinTrait.create_type_var("Item")
         index = BuiltinTrait(self, "Index", [t], [Method("get", [("index", IRIntegerType(64))], t, True)])
         index.create_base(self.program.ops["Index"])
+
+        t = BuiltinTrait.create_type_var("Contents")
+        trace = BuiltinTrait(self, "Trace", [t], [Method("trace", [("trace", IRFunctionType([t], t))], IRUnitType(), True)])
+        trace.create_base(self.program.ops["Trace"])
 
         initial_traits = self.program.traits[:]
         initial_structs = self.program.structs[:]
@@ -679,7 +683,7 @@ class BidirectionalTypeInference:
                 param = method.function.parameters[1]
                 yield_type, _ = self.unify_expr(expr.argument, cast(IRResolvedType, param.type), expr.loc)
                 expr.replacement_expr = IRMethodCallExpr(expr.obj, index_trait, method, [expr.argument])
-                expr.yield_type = expr.replacement_expr.yield_type = yield_type
+                expr.yield_type = expr.replacement_expr.yield_type = resolved_obj.trait.type_args[0]
                 return IRValue(expr.yield_type, None)
             else:
                 raise CompilerMessage(ErrorType.COMPILATION, f"Object of type {resolved_obj.trait.name} does not implement trait 'Index'", expr.loc)
@@ -692,7 +696,7 @@ class BidirectionalTypeInference:
                     param = method.function.parameters[1]
                     yield_type, _ = self.unify_expr(expr.argument, cast(IRResolvedType, param.type), expr.loc)
                     expr.replacement_expr = IRMethodCallExpr(expr.obj, index_trait, method, [expr.argument])
-                    expr.yield_type = expr.replacement_expr.yield_type = yield_type
+                    expr.yield_type = expr.replacement_expr.yield_type = supertrait.trait.type_args[0]
                     return IRValue(expr.yield_type, None)
                 else:
                     raise CompilerMessage(ErrorType.COMPILATION, f"Object of type {supertrait.trait.name} does not implement trait 'Index'", expr.loc)
@@ -985,7 +989,7 @@ class SubstituteNodes:
         new_stmts = []
         for stmt in block.body:
             new_stmts.append(self.substitute_stmt(stmt))
-        return IRBlock(new_stmts, [self.value_decl[decl] for decl in self.value_decl], block.return_unit)
+        return IRBlock(new_stmts, [self.value_decl[decl] for decl in self.value_decl], block.return_unit).set_loc(block.loc)
 
     def substitute_stmt(self, stmt: IRStmt) -> IRStmt:
         if isinstance(stmt, IRExprStmt):

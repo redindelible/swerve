@@ -1,19 +1,24 @@
 import io::putchar
 
-struct List[T] : ops::Index[T] {
+struct List[T] : ops::Index[T], ops::Trace[T] {
     _buffer: _array[T]
     _len: int
     _buffer_size: int
 
     fn ::new(len: int, fill: (int) -> T) -> List[T] {
-        let buf := _array[T](len);
+        putchar(40);
+        let li := List[T](_array[T](len), 0, len);
+        putchar(33);
         let i := 0;
         while (i < len) {
-            let val := fill(i);
-            buf.set(i, val);
+            putchar(i + 48);
+            let item := fill(i);
+            li.push(fill(i));
+            putchar(i + 48);
             i += 1;
         }
-        return List[T](buf, len, len);
+        putchar(41);
+        return li;
     }
 
     fn ::new_empty() -> List[T] {
@@ -32,6 +37,16 @@ struct List[T] : ops::Index[T] {
         return self._buffer.set(index, item);
     }
 
+    fn trace(self, trace: (T) -> T) -> () {
+        let i := 0;
+        while (i < self._len) {
+            let item := self._buffer.get(i);
+            let moved := trace(item);
+            self._buffer.set(i, moved);
+            i += 1;
+        }
+    }
+
     fn ::_resize(self, new_size: int) -> () {
         let buf := _array[T](new_size);
         let i := 0;
@@ -44,10 +59,13 @@ struct List[T] : ops::Index[T] {
     }
 
     fn ::push(self, item: T) -> T {
+        putchar(self._buffer_size + 48);
         if (self._buffer_size <= self._len) {
             self._resize(self._buffer_size * 2);
         }
+        putchar(33);
         self._buffer.set(self._len, item);
+        putchar(33);
         self._len += 1;
         return item;
     }

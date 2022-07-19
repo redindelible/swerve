@@ -85,8 +85,9 @@ class ResolveNames:
         self.ir_program.array_constructor_decl = ns.declare_value("_array", IRValueDecl(IRUnresolvedUnknownType(), BuiltinLocation(), False))
 
         ops_ns = Namespace()
-        self.ir_program.ops["Index"] = ops_ns.declare_type("Index", IRTypeDecl(IRUnresolvedUnknownType(), BuiltinLocation()))
         ns.declare_namespace("ops", ops_ns, BuiltinLocation())
+        self.ir_program.ops["Index"] = ops_ns.declare_type("Index", IRTypeDecl(IRUnresolvedUnknownType(), BuiltinLocation()))
+        self.ir_program.ops["Trace"] = ops_ns.declare_type("Trace", IRTypeDecl(IRUnresolvedUnknownType(), BuiltinLocation()))
 
         for file in program.files:
             self.collect_file(file)
