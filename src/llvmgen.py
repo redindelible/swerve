@@ -538,17 +538,17 @@ class LLVMGen:
                     else:
                         self.generate_stmt(stmt)
 
-            if not self.builder.block.is_terminated:
-                if last_result is None or not self.type_is_managed(last_result_type):
-                    self.builder.call(self.external_functions["SWERVE_gc_check"], [
-                        self.builder.bitcast(frame.value, void_p),
-                        null
-                    ])
-                else:
-                    self.builder.call(self.external_functions["SWERVE_gc_check"], [
-                        self.builder.bitcast(self.frames.recent.value, void_p),
-                        self.builder.bitcast(self.get_slot_managed_pointer(last_result, last_result_type, self.builder), void_p)
-                    ])
+        if not self.builder.block.is_terminated:
+            if last_result is None or not self.type_is_managed(last_result_type):
+                self.builder.call(self.external_functions["SWERVE_gc_check"], [
+                    self.builder.bitcast(self.frames.recent.value, void_p),
+                    null
+                ])
+            else:
+                self.builder.call(self.external_functions["SWERVE_gc_check"], [
+                    self.builder.bitcast(self.frames.recent.value, void_p),
+                    self.builder.bitcast(self.get_slot_managed_pointer(last_result, last_result_type, self.builder), void_p)
+                ])
 
         return last_result
 
