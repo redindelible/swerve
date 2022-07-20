@@ -37,12 +37,11 @@ struct List[T] : ops::Index[T], ops::Trace[T] {
         return self._buffer.set(index, item);
     }
 
-    fn trace(self, trace: (T) -> T) -> () {
+    fn trace(self, trace: (T) -> ()) -> () {
         let i := 0;
         while (i < self._len) {
             let item := self._buffer.get(i);
-            let moved := trace(item);
-            self._buffer.set(i, moved);
+            trace(item);
             i += 1;
         }
     }

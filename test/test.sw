@@ -27,8 +27,11 @@ struct Holder[T] {
 
 
 fn main() -> int {
+    putchar(33);
     let li := List[int]::new(10, |i| i * 2);
+    putchar(33);
     let item := li[6];
+    putchar(33);
     print_number(item);
 
     let li2 := List[Holder[int]]::new(10, |i| Holder[int](li[i]));

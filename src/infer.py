@@ -375,7 +375,7 @@ class BidirectionalTypeInference:
         index.create_base(self.program.ops["Index"])
 
         t = BuiltinTrait.create_type_var("Contents")
-        trace = BuiltinTrait(self, "Trace", [t], [Method("trace", [("trace", IRFunctionType([t], t))], IRUnitType(), True)])
+        trace = BuiltinTrait(self, "Trace", [t], [Method("trace", [("trace", IRFunctionType([t], IRUnitType()))], IRUnitType(), True)])
         trace.create_base(self.program.ops["Trace"])
 
         initial_traits = self.program.traits[:]
