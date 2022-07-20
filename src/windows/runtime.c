@@ -111,6 +111,8 @@ void* SWERVE_gc_allocate(uint64_t size, void (*trace)(void*)) {
         }
         if (block == NULL) {
             block = SWERVE_gc_add_block((index + 1) * 32);
+            block->next_block = gc_state.blocks[index];
+            gc_state.blocks[index] = block;
         }
         uint32_t free_index = __builtin_ctz(block->free_map);
         obj = (struct ObjectHeader*) &block->mem[free_index * block->item_size];
@@ -123,6 +125,7 @@ void* SWERVE_gc_allocate(uint64_t size, void (*trace)(void*)) {
 
     memset(obj, 0, size);
     obj->block = block;
+//    printf("Obj block: %p\n", obj->block);
     obj->prev = gc_state.gray;
     gc_state.gray = obj;
     MARK_BLACK(obj);
@@ -235,7 +238,13 @@ void SWERVE_gc_main() {
                 MARK_BLACK(next_gray);
             }
 
-            // TODO free stuff still in white
+            struct ObjectHeader* garbage = gc_state.white;
+            while (garbage != NULL) {
+                struct AllocBlock* block = garbage->block;
+                int index = ((intptr_t) garbage - (intptr_t) block) / block->item_size;
+                block->free_map &= ~(((uint64_t) 1) << index);
+                garbage = PREV_PTR(garbage);
+            }
 
             gc_state.white = gc_state.black;
             gc_state.black = NULL;

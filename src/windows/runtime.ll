@@ -251,7 +251,7 @@ define dso_local i8* @SWERVE_gc_allocate(i64 %0, void (i8*)* %1) #1 {
   %11 = call i32 @WaitForSingleObject(i8* %10, i32 -1)
   %12 = load i64, i64* %4, align 8
   %13 = icmp ule i64 %12, 256
-  br i1 %13, label %14, label %73
+  br i1 %13, label %14, label %83
 
 14:                                               ; preds = %2
   %15 = load i64, i64* %4, align 8
@@ -298,7 +298,7 @@ define dso_local i8* @SWERVE_gc_allocate(i64 %0, void (i8*)* %1) #1 {
 43:                                               ; preds = %37
   %44 = load %struct.AllocBlock*, %struct.AllocBlock** %6, align 8
   %45 = icmp eq %struct.AllocBlock* %44, null
-  br i1 %45, label %46, label %51
+  br i1 %45, label %46, label %61
 
 46:                                               ; preds = %43
   %47 = load i32, i32* %7, align 4
@@ -306,107 +306,119 @@ define dso_local i8* @SWERVE_gc_allocate(i64 %0, void (i8*)* %1) #1 {
   %49 = mul nsw i32 %48, 32
   %50 = call %struct.AllocBlock* @SWERVE_gc_add_block(i32 %49)
   store %struct.AllocBlock* %50, %struct.AllocBlock** %6, align 8
-  br label %51
+  %51 = load i32, i32* %7, align 4
+  %52 = sext i32 %51 to i64
+  %53 = getelementptr inbounds [7 x %struct.AllocBlock*], [7 x %struct.AllocBlock*]* getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 10), i64 0, i64 %52
+  %54 = load %struct.AllocBlock*, %struct.AllocBlock** %53, align 8
+  %55 = load %struct.AllocBlock*, %struct.AllocBlock** %6, align 8
+  %56 = getelementptr inbounds %struct.AllocBlock, %struct.AllocBlock* %55, i32 0, i32 0
+  store %struct.AllocBlock* %54, %struct.AllocBlock** %56, align 8
+  %57 = load %struct.AllocBlock*, %struct.AllocBlock** %6, align 8
+  %58 = load i32, i32* %7, align 4
+  %59 = sext i32 %58 to i64
+  %60 = getelementptr inbounds [7 x %struct.AllocBlock*], [7 x %struct.AllocBlock*]* getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 10), i64 0, i64 %59
+  store %struct.AllocBlock* %57, %struct.AllocBlock** %60, align 8
+  br label %61
 
-51:                                               ; preds = %46, %43
-  %52 = load %struct.AllocBlock*, %struct.AllocBlock** %6, align 8
-  %53 = getelementptr inbounds %struct.AllocBlock, %struct.AllocBlock* %52, i32 0, i32 2
-  %54 = load i32, i32* %53, align 4
-  %55 = call i32 @llvm.cttz.i32(i32 %54, i1 true)
-  store i32 %55, i32* %8, align 4
-  %56 = load %struct.AllocBlock*, %struct.AllocBlock** %6, align 8
-  %57 = getelementptr inbounds %struct.AllocBlock, %struct.AllocBlock* %56, i32 0, i32 3
-  %58 = load i32, i32* %8, align 4
-  %59 = load %struct.AllocBlock*, %struct.AllocBlock** %6, align 8
-  %60 = getelementptr inbounds %struct.AllocBlock, %struct.AllocBlock* %59, i32 0, i32 1
-  %61 = load i32, i32* %60, align 8
-  %62 = mul i32 %58, %61
-  %63 = zext i32 %62 to i64
-  %64 = getelementptr inbounds [0 x i8], [0 x i8]* %57, i64 0, i64 %63
-  %65 = bitcast i8* %64 to %struct.ObjectHeader*
-  store %struct.ObjectHeader* %65, %struct.ObjectHeader** %5, align 8
-  %66 = load i32, i32* %8, align 4
-  %67 = shl i32 1, %66
-  %68 = xor i32 %67, -1
+61:                                               ; preds = %46, %43
+  %62 = load %struct.AllocBlock*, %struct.AllocBlock** %6, align 8
+  %63 = getelementptr inbounds %struct.AllocBlock, %struct.AllocBlock* %62, i32 0, i32 2
+  %64 = load i32, i32* %63, align 4
+  %65 = call i32 @llvm.cttz.i32(i32 %64, i1 true)
+  store i32 %65, i32* %8, align 4
+  %66 = load %struct.AllocBlock*, %struct.AllocBlock** %6, align 8
+  %67 = getelementptr inbounds %struct.AllocBlock, %struct.AllocBlock* %66, i32 0, i32 3
+  %68 = load i32, i32* %8, align 4
   %69 = load %struct.AllocBlock*, %struct.AllocBlock** %6, align 8
-  %70 = getelementptr inbounds %struct.AllocBlock, %struct.AllocBlock* %69, i32 0, i32 2
-  %71 = load i32, i32* %70, align 4
-  %72 = and i32 %71, %68
-  store i32 %72, i32* %70, align 4
-  br label %85
+  %70 = getelementptr inbounds %struct.AllocBlock, %struct.AllocBlock* %69, i32 0, i32 1
+  %71 = load i32, i32* %70, align 8
+  %72 = mul i32 %68, %71
+  %73 = zext i32 %72 to i64
+  %74 = getelementptr inbounds [0 x i8], [0 x i8]* %67, i64 0, i64 %73
+  %75 = bitcast i8* %74 to %struct.ObjectHeader*
+  store %struct.ObjectHeader* %75, %struct.ObjectHeader** %5, align 8
+  %76 = load i32, i32* %8, align 4
+  %77 = shl i32 1, %76
+  %78 = xor i32 %77, -1
+  %79 = load %struct.AllocBlock*, %struct.AllocBlock** %6, align 8
+  %80 = getelementptr inbounds %struct.AllocBlock, %struct.AllocBlock* %79, i32 0, i32 2
+  %81 = load i32, i32* %80, align 4
+  %82 = and i32 %81, %78
+  store i32 %82, i32* %80, align 4
+  br label %95
 
-73:                                               ; preds = %2
-  %74 = load i64, i64* %4, align 8
-  %75 = trunc i64 %74 to i32
-  %76 = call %struct.AllocBlock* @SWERVE_gc_add_block(i32 %75)
-  store %struct.AllocBlock* %76, %struct.AllocBlock** %6, align 8
-  %77 = load %struct.AllocBlock*, %struct.AllocBlock** %6, align 8
-  %78 = getelementptr inbounds %struct.AllocBlock, %struct.AllocBlock* %77, i32 0, i32 3
-  %79 = getelementptr inbounds [0 x i8], [0 x i8]* %78, i64 0, i64 0
-  %80 = bitcast i8* %79 to %struct.ObjectHeader*
-  store %struct.ObjectHeader* %80, %struct.ObjectHeader** %5, align 8
-  %81 = load %struct.AllocBlock*, %struct.AllocBlock** %6, align 8
-  %82 = getelementptr inbounds %struct.AllocBlock, %struct.AllocBlock* %81, i32 0, i32 2
-  %83 = load i32, i32* %82, align 4
-  %84 = and i32 %83, -2
-  store i32 %84, i32* %82, align 4
-  br label %85
+83:                                               ; preds = %2
+  %84 = load i64, i64* %4, align 8
+  %85 = trunc i64 %84 to i32
+  %86 = call %struct.AllocBlock* @SWERVE_gc_add_block(i32 %85)
+  store %struct.AllocBlock* %86, %struct.AllocBlock** %6, align 8
+  %87 = load %struct.AllocBlock*, %struct.AllocBlock** %6, align 8
+  %88 = getelementptr inbounds %struct.AllocBlock, %struct.AllocBlock* %87, i32 0, i32 3
+  %89 = getelementptr inbounds [0 x i8], [0 x i8]* %88, i64 0, i64 0
+  %90 = bitcast i8* %89 to %struct.ObjectHeader*
+  store %struct.ObjectHeader* %90, %struct.ObjectHeader** %5, align 8
+  %91 = load %struct.AllocBlock*, %struct.AllocBlock** %6, align 8
+  %92 = getelementptr inbounds %struct.AllocBlock, %struct.AllocBlock* %91, i32 0, i32 2
+  %93 = load i32, i32* %92, align 4
+  %94 = and i32 %93, -2
+  store i32 %94, i32* %92, align 4
+  br label %95
 
-85:                                               ; preds = %73, %51
-  %86 = load %struct.ObjectHeader*, %struct.ObjectHeader** %5, align 8
-  %87 = bitcast %struct.ObjectHeader* %86 to i8*
-  %88 = load i64, i64* %4, align 8
-  call void @llvm.memset.p0i8.i64(i8* align 8 %87, i8 0, i64 %88, i1 false)
-  %89 = load %struct.AllocBlock*, %struct.AllocBlock** %6, align 8
-  %90 = load %struct.ObjectHeader*, %struct.ObjectHeader** %5, align 8
-  %91 = getelementptr inbounds %struct.ObjectHeader, %struct.ObjectHeader* %90, i32 0, i32 0
-  store %struct.AllocBlock* %89, %struct.AllocBlock** %91, align 8
-  %92 = load %struct.ObjectHeader*, %struct.ObjectHeader** getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 8), align 8
-  %93 = load %struct.ObjectHeader*, %struct.ObjectHeader** %5, align 8
-  %94 = getelementptr inbounds %struct.ObjectHeader, %struct.ObjectHeader* %93, i32 0, i32 1
-  store %struct.ObjectHeader* %92, %struct.ObjectHeader** %94, align 8
-  %95 = load %struct.ObjectHeader*, %struct.ObjectHeader** %5, align 8
-  store %struct.ObjectHeader* %95, %struct.ObjectHeader** getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 8), align 8
-  br label %96
+95:                                               ; preds = %83, %61
+  %96 = load %struct.ObjectHeader*, %struct.ObjectHeader** %5, align 8
+  %97 = bitcast %struct.ObjectHeader* %96 to i8*
+  %98 = load i64, i64* %4, align 8
+  call void @llvm.memset.p0i8.i64(i8* align 8 %97, i8 0, i64 %98, i1 false)
+  %99 = load %struct.AllocBlock*, %struct.AllocBlock** %6, align 8
+  %100 = load %struct.ObjectHeader*, %struct.ObjectHeader** %5, align 8
+  %101 = getelementptr inbounds %struct.ObjectHeader, %struct.ObjectHeader* %100, i32 0, i32 0
+  store %struct.AllocBlock* %99, %struct.AllocBlock** %101, align 8
+  %102 = load %struct.ObjectHeader*, %struct.ObjectHeader** getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 8), align 8
+  %103 = load %struct.ObjectHeader*, %struct.ObjectHeader** %5, align 8
+  %104 = getelementptr inbounds %struct.ObjectHeader, %struct.ObjectHeader* %103, i32 0, i32 1
+  store %struct.ObjectHeader* %102, %struct.ObjectHeader** %104, align 8
+  %105 = load %struct.ObjectHeader*, %struct.ObjectHeader** %5, align 8
+  store %struct.ObjectHeader* %105, %struct.ObjectHeader** getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 8), align 8
+  br label %106
 
-96:                                               ; preds = %85
-  %97 = load %struct.ObjectHeader*, %struct.ObjectHeader** %5, align 8
-  %98 = getelementptr inbounds %struct.ObjectHeader, %struct.ObjectHeader* %97, i32 0, i32 1
-  %99 = bitcast %struct.ObjectHeader** %98 to i64*
-  store i64* %99, i64** %9, align 8
-  %100 = load i8, i8* getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 6), align 8
-  %101 = trunc i8 %100 to i1
-  br i1 %101, label %102, label %107
+106:                                              ; preds = %95
+  %107 = load %struct.ObjectHeader*, %struct.ObjectHeader** %5, align 8
+  %108 = getelementptr inbounds %struct.ObjectHeader, %struct.ObjectHeader* %107, i32 0, i32 1
+  %109 = bitcast %struct.ObjectHeader** %108 to i64*
+  store i64* %109, i64** %9, align 8
+  %110 = load i8, i8* getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 6), align 8
+  %111 = trunc i8 %110 to i1
+  br i1 %111, label %112, label %117
 
-102:                                              ; preds = %96
-  %103 = load i64*, i64** %9, align 8
-  %104 = load i64, i64* %103, align 8
-  %105 = and i64 %104, -2
-  %106 = load i64*, i64** %9, align 8
-  store i64 %105, i64* %106, align 8
-  br label %112
+112:                                              ; preds = %106
+  %113 = load i64*, i64** %9, align 8
+  %114 = load i64, i64* %113, align 8
+  %115 = and i64 %114, -2
+  %116 = load i64*, i64** %9, align 8
+  store i64 %115, i64* %116, align 8
+  br label %122
 
-107:                                              ; preds = %96
-  %108 = load i64*, i64** %9, align 8
-  %109 = load i64, i64* %108, align 8
-  %110 = or i64 %109, 1
-  %111 = load i64*, i64** %9, align 8
-  store i64 %110, i64* %111, align 8
-  br label %112
+117:                                              ; preds = %106
+  %118 = load i64*, i64** %9, align 8
+  %119 = load i64, i64* %118, align 8
+  %120 = or i64 %119, 1
+  %121 = load i64*, i64** %9, align 8
+  store i64 %120, i64* %121, align 8
+  br label %122
 
-112:                                              ; preds = %107, %102
-  br label %113
+122:                                              ; preds = %117, %112
+  br label %123
 
-113:                                              ; preds = %112
-  %114 = load void (i8*)*, void (i8*)** %3, align 8
-  %115 = load %struct.ObjectHeader*, %struct.ObjectHeader** %5, align 8
-  %116 = getelementptr inbounds %struct.ObjectHeader, %struct.ObjectHeader* %115, i32 0, i32 2
-  store void (i8*)* %114, void (i8*)** %116, align 8
-  %117 = load i8*, i8** getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 0), align 8
-  %118 = call i32 @ReleaseMutex(i8* %117)
-  %119 = load %struct.ObjectHeader*, %struct.ObjectHeader** %5, align 8
-  %120 = bitcast %struct.ObjectHeader* %119 to i8*
-  ret i8* %120
+123:                                              ; preds = %122
+  %124 = load void (i8*)*, void (i8*)** %3, align 8
+  %125 = load %struct.ObjectHeader*, %struct.ObjectHeader** %5, align 8
+  %126 = getelementptr inbounds %struct.ObjectHeader, %struct.ObjectHeader* %125, i32 0, i32 2
+  store void (i8*)* %124, void (i8*)** %126, align 8
+  %127 = load i8*, i8** getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 0), align 8
+  %128 = call i32 @ReleaseMutex(i8* %127)
+  %129 = load %struct.ObjectHeader*, %struct.ObjectHeader** %5, align 8
+  %130 = bitcast %struct.ObjectHeader* %129 to i8*
+  ret i8* %130
 }
 
 declare dllimport i32 @WaitForSingleObject(i8*, i32) #2
@@ -686,131 +698,181 @@ define dso_local void @SWERVE_gc_main() #1 {
   %1 = alloca i32, align 4
   %2 = alloca %struct.ObjectHeader*, align 8
   %3 = alloca i64*, align 8
+  %4 = alloca %struct.ObjectHeader*, align 8
+  %5 = alloca %struct.AllocBlock*, align 8
+  %6 = alloca i32, align 4
   store i32 0, i32* %1, align 4
-  br label %4
+  br label %7
 
-4:                                                ; preds = %0, %72
-  %5 = call i32 @SwitchToThread()
-  %6 = load i64, i64* getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 4), align 8
-  %7 = icmp eq i64 %6, 0
-  br i1 %7, label %8, label %9
+7:                                                ; preds = %0, %111
+  %8 = call i32 @SwitchToThread()
+  %9 = load i64, i64* getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 4), align 8
+  %10 = icmp eq i64 %9, 0
+  br i1 %10, label %11, label %12
 
-8:                                                ; preds = %4
+11:                                               ; preds = %7
   ret void
 
-9:                                                ; preds = %4
+12:                                               ; preds = %7
   store %struct.ObjectHeader* null, %struct.ObjectHeader** getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 8), align 8
-  %10 = load i8*, i8** getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 1), align 8
-  %11 = call i32 @ResetEvent(i8* %10)
+  %13 = load i8*, i8** getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 1), align 8
+  %14 = call i32 @ResetEvent(i8* %13)
   store i8 1, i8* getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 2), align 8
-  br label %12
+  br label %15
 
-12:                                               ; preds = %9, %18
-  %13 = call i32 @SwitchToThread()
-  %14 = load i64, i64* getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 4), align 8
-  %15 = load i64, i64* getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 5), align 8
-  %16 = icmp eq i64 %14, %15
-  br i1 %16, label %17, label %18
+15:                                               ; preds = %12, %21
+  %16 = call i32 @SwitchToThread()
+  %17 = load i64, i64* getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 4), align 8
+  %18 = load i64, i64* getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 5), align 8
+  %19 = icmp eq i64 %17, %18
+  br i1 %19, label %20, label %21
 
-17:                                               ; preds = %12
-  br label %19
+20:                                               ; preds = %15
+  br label %22
 
-18:                                               ; preds = %12
-  br label %12
+21:                                               ; preds = %15
+  br label %15
 
-19:                                               ; preds = %17
+22:                                               ; preds = %20
   store i8 1, i8* getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 3), align 1
-  br label %20
+  br label %23
 
-20:                                               ; preds = %57, %19
-  %21 = load %struct.ObjectHeader*, %struct.ObjectHeader** getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 8), align 8
-  %22 = icmp ne %struct.ObjectHeader* %21, null
-  br i1 %22, label %23, label %58
-
-23:                                               ; preds = %20
+23:                                               ; preds = %60, %22
   %24 = load %struct.ObjectHeader*, %struct.ObjectHeader** getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 8), align 8
-  store %struct.ObjectHeader* %24, %struct.ObjectHeader** %2, align 8
-  %25 = load %struct.ObjectHeader*, %struct.ObjectHeader** %2, align 8
-  %26 = getelementptr inbounds %struct.ObjectHeader, %struct.ObjectHeader* %25, i32 0, i32 1
-  %27 = load %struct.ObjectHeader*, %struct.ObjectHeader** %26, align 8
-  %28 = ptrtoint %struct.ObjectHeader* %27 to i64
-  %29 = and i64 %28, -2
-  %30 = inttoptr i64 %29 to %struct.ObjectHeader*
-  store %struct.ObjectHeader* %30, %struct.ObjectHeader** getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 8), align 8
-  %31 = load %struct.ObjectHeader*, %struct.ObjectHeader** %2, align 8
-  %32 = getelementptr inbounds %struct.ObjectHeader, %struct.ObjectHeader* %31, i32 0, i32 2
-  %33 = load void (i8*)*, void (i8*)** %32, align 8
+  %25 = icmp ne %struct.ObjectHeader* %24, null
+  br i1 %25, label %26, label %61
+
+26:                                               ; preds = %23
+  %27 = load %struct.ObjectHeader*, %struct.ObjectHeader** getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 8), align 8
+  store %struct.ObjectHeader* %27, %struct.ObjectHeader** %2, align 8
+  %28 = load %struct.ObjectHeader*, %struct.ObjectHeader** %2, align 8
+  %29 = getelementptr inbounds %struct.ObjectHeader, %struct.ObjectHeader* %28, i32 0, i32 1
+  %30 = load %struct.ObjectHeader*, %struct.ObjectHeader** %29, align 8
+  %31 = ptrtoint %struct.ObjectHeader* %30 to i64
+  %32 = and i64 %31, -2
+  %33 = inttoptr i64 %32 to %struct.ObjectHeader*
+  store %struct.ObjectHeader* %33, %struct.ObjectHeader** getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 8), align 8
   %34 = load %struct.ObjectHeader*, %struct.ObjectHeader** %2, align 8
-  %35 = bitcast %struct.ObjectHeader* %34 to i8*
-  call void %33(i8* %35)
-  %36 = load %struct.ObjectHeader*, %struct.ObjectHeader** getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 9), align 8
+  %35 = getelementptr inbounds %struct.ObjectHeader, %struct.ObjectHeader* %34, i32 0, i32 2
+  %36 = load void (i8*)*, void (i8*)** %35, align 8
   %37 = load %struct.ObjectHeader*, %struct.ObjectHeader** %2, align 8
-  %38 = getelementptr inbounds %struct.ObjectHeader, %struct.ObjectHeader* %37, i32 0, i32 1
-  store %struct.ObjectHeader* %36, %struct.ObjectHeader** %38, align 8
-  %39 = load %struct.ObjectHeader*, %struct.ObjectHeader** %2, align 8
-  store %struct.ObjectHeader* %39, %struct.ObjectHeader** getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 9), align 8
-  br label %40
+  %38 = bitcast %struct.ObjectHeader* %37 to i8*
+  call void %36(i8* %38)
+  %39 = load %struct.ObjectHeader*, %struct.ObjectHeader** getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 9), align 8
+  %40 = load %struct.ObjectHeader*, %struct.ObjectHeader** %2, align 8
+  %41 = getelementptr inbounds %struct.ObjectHeader, %struct.ObjectHeader* %40, i32 0, i32 1
+  store %struct.ObjectHeader* %39, %struct.ObjectHeader** %41, align 8
+  %42 = load %struct.ObjectHeader*, %struct.ObjectHeader** %2, align 8
+  store %struct.ObjectHeader* %42, %struct.ObjectHeader** getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 9), align 8
+  br label %43
 
-40:                                               ; preds = %23
-  %41 = load %struct.ObjectHeader*, %struct.ObjectHeader** %2, align 8
-  %42 = getelementptr inbounds %struct.ObjectHeader, %struct.ObjectHeader* %41, i32 0, i32 1
-  %43 = bitcast %struct.ObjectHeader** %42 to i64*
-  store i64* %43, i64** %3, align 8
-  %44 = load i8, i8* getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 6), align 8
-  %45 = trunc i8 %44 to i1
-  br i1 %45, label %46, label %51
+43:                                               ; preds = %26
+  %44 = load %struct.ObjectHeader*, %struct.ObjectHeader** %2, align 8
+  %45 = getelementptr inbounds %struct.ObjectHeader, %struct.ObjectHeader* %44, i32 0, i32 1
+  %46 = bitcast %struct.ObjectHeader** %45 to i64*
+  store i64* %46, i64** %3, align 8
+  %47 = load i8, i8* getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 6), align 8
+  %48 = trunc i8 %47 to i1
+  br i1 %48, label %49, label %54
 
-46:                                               ; preds = %40
-  %47 = load i64*, i64** %3, align 8
-  %48 = load i64, i64* %47, align 8
-  %49 = and i64 %48, -2
+49:                                               ; preds = %43
   %50 = load i64*, i64** %3, align 8
-  store i64 %49, i64* %50, align 8
-  br label %56
+  %51 = load i64, i64* %50, align 8
+  %52 = and i64 %51, -2
+  %53 = load i64*, i64** %3, align 8
+  store i64 %52, i64* %53, align 8
+  br label %59
 
-51:                                               ; preds = %40
-  %52 = load i64*, i64** %3, align 8
-  %53 = load i64, i64* %52, align 8
-  %54 = or i64 %53, 1
+54:                                               ; preds = %43
   %55 = load i64*, i64** %3, align 8
-  store i64 %54, i64* %55, align 8
-  br label %56
+  %56 = load i64, i64* %55, align 8
+  %57 = or i64 %56, 1
+  %58 = load i64*, i64** %3, align 8
+  store i64 %57, i64* %58, align 8
+  br label %59
 
-56:                                               ; preds = %51, %46
-  br label %57
+59:                                               ; preds = %54, %49
+  br label %60
 
-57:                                               ; preds = %56
-  br label %20
+60:                                               ; preds = %59
+  br label %23
 
-58:                                               ; preds = %20
-  %59 = load %struct.ObjectHeader*, %struct.ObjectHeader** getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 9), align 8
-  store %struct.ObjectHeader* %59, %struct.ObjectHeader** getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 7), align 8
+61:                                               ; preds = %23
+  %62 = load %struct.ObjectHeader*, %struct.ObjectHeader** getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 7), align 8
+  store %struct.ObjectHeader* %62, %struct.ObjectHeader** %4, align 8
+  br label %63
+
+63:                                               ; preds = %66, %61
+  %64 = load %struct.ObjectHeader*, %struct.ObjectHeader** %4, align 8
+  %65 = icmp ne %struct.ObjectHeader* %64, null
+  br i1 %65, label %66, label %97
+
+66:                                               ; preds = %63
+  %67 = load %struct.ObjectHeader*, %struct.ObjectHeader** %4, align 8
+  %68 = getelementptr inbounds %struct.ObjectHeader, %struct.ObjectHeader* %67, i32 0, i32 0
+  %69 = load %struct.AllocBlock*, %struct.AllocBlock** %68, align 8
+  store %struct.AllocBlock* %69, %struct.AllocBlock** %5, align 8
+  %70 = load %struct.ObjectHeader*, %struct.ObjectHeader** %4, align 8
+  %71 = ptrtoint %struct.ObjectHeader* %70 to i64
+  %72 = load %struct.AllocBlock*, %struct.AllocBlock** %5, align 8
+  %73 = ptrtoint %struct.AllocBlock* %72 to i64
+  %74 = sub nsw i64 %71, %73
+  %75 = load %struct.AllocBlock*, %struct.AllocBlock** %5, align 8
+  %76 = getelementptr inbounds %struct.AllocBlock, %struct.AllocBlock* %75, i32 0, i32 1
+  %77 = load i32, i32* %76, align 8
+  %78 = zext i32 %77 to i64
+  %79 = sdiv i64 %74, %78
+  %80 = trunc i64 %79 to i32
+  store i32 %80, i32* %6, align 4
+  %81 = load i32, i32* %6, align 4
+  %82 = zext i32 %81 to i64
+  %83 = shl i64 1, %82
+  %84 = xor i64 %83, -1
+  %85 = load %struct.AllocBlock*, %struct.AllocBlock** %5, align 8
+  %86 = getelementptr inbounds %struct.AllocBlock, %struct.AllocBlock* %85, i32 0, i32 2
+  %87 = load i32, i32* %86, align 4
+  %88 = zext i32 %87 to i64
+  %89 = and i64 %88, %84
+  %90 = trunc i64 %89 to i32
+  store i32 %90, i32* %86, align 4
+  %91 = load %struct.ObjectHeader*, %struct.ObjectHeader** %4, align 8
+  %92 = getelementptr inbounds %struct.ObjectHeader, %struct.ObjectHeader* %91, i32 0, i32 1
+  %93 = load %struct.ObjectHeader*, %struct.ObjectHeader** %92, align 8
+  %94 = ptrtoint %struct.ObjectHeader* %93 to i64
+  %95 = and i64 %94, -2
+  %96 = inttoptr i64 %95 to %struct.ObjectHeader*
+  store %struct.ObjectHeader* %96, %struct.ObjectHeader** %4, align 8
+  br label %63
+
+97:                                               ; preds = %63
+  %98 = load %struct.ObjectHeader*, %struct.ObjectHeader** getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 9), align 8
+  store %struct.ObjectHeader* %98, %struct.ObjectHeader** getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 7), align 8
   store %struct.ObjectHeader* null, %struct.ObjectHeader** getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 9), align 8
-  %60 = load i8, i8* getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 6), align 8
-  %61 = trunc i8 %60 to i1
-  %62 = xor i1 %61, true
-  %63 = zext i1 %62 to i8
-  store i8 %63, i8* getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 6), align 8
+  %99 = load i8, i8* getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 6), align 8
+  %100 = trunc i8 %99 to i1
+  %101 = xor i1 %100, true
+  %102 = zext i1 %101 to i8
+  store i8 %102, i8* getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 6), align 8
   store i8 0, i8* getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 3), align 1
   store i8 0, i8* getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 2), align 8
-  %64 = load i8*, i8** getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 1), align 8
-  %65 = call i32 @SetEvent(i8* %64)
-  br label %66
+  %103 = load i8*, i8** getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 1), align 8
+  %104 = call i32 @SetEvent(i8* %103)
+  br label %105
 
-66:                                               ; preds = %58, %71
-  %67 = call i32 @SwitchToThread()
-  %68 = load i64, i64* getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 5), align 8
-  %69 = icmp eq i64 %68, 0
-  br i1 %69, label %70, label %71
+105:                                              ; preds = %97, %110
+  %106 = call i32 @SwitchToThread()
+  %107 = load i64, i64* getelementptr inbounds (%struct.GCState, %struct.GCState* @gc_state, i32 0, i32 5), align 8
+  %108 = icmp eq i64 %107, 0
+  br i1 %108, label %109, label %110
 
-70:                                               ; preds = %66
-  br label %72
+109:                                              ; preds = %105
+  br label %111
 
-71:                                               ; preds = %66
-  br label %66
+110:                                              ; preds = %105
+  br label %105
 
-72:                                               ; preds = %70
-  br label %4
+111:                                              ; preds = %109
+  br label %7
 }
 
 declare dllimport i32 @SwitchToThread() #2

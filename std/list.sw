@@ -6,18 +6,12 @@ struct List[T] : ops::Index[T], ops::Trace[T] {
     _buffer_size: int
 
     fn ::new(len: int, fill: (int) -> T) -> List[T] {
-        putchar(40);
         let li := List[T](_array[T](len), 0, len);
-        putchar(33);
         let i := 0;
         while (i < len) {
-            putchar(i + 48);
-            let item := fill(i);
             li.push(fill(i));
-            putchar(i + 48);
             i += 1;
         }
-        putchar(41);
         return li;
     }
 
@@ -40,8 +34,7 @@ struct List[T] : ops::Index[T], ops::Trace[T] {
     fn trace(self, trace: (T) -> ()) -> () {
         let i := 0;
         while (i < self._len) {
-            let item := self._buffer.get(i);
-            trace(item);
+            trace(self._buffer.get(i));
             i += 1;
         }
     }
@@ -58,13 +51,10 @@ struct List[T] : ops::Index[T], ops::Trace[T] {
     }
 
     fn ::push(self, item: T) -> T {
-        putchar(self._buffer_size + 48);
         if (self._buffer_size <= self._len) {
             self._resize(self._buffer_size * 2);
         }
-        putchar(33);
         self._buffer.set(self._len, item);
-        putchar(33);
         self._len += 1;
         return item;
     }
